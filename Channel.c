@@ -1,4 +1,4 @@
-#include "Measurement.h"
+#include "Channel.h"
 #include <string.h>
 #include <stdio.h>
 

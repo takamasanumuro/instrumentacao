@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <time.h>
-#include "Measurement.h"
+#include "Channel.h"
 #include "ConfigYAML.h"
 
 // Structure to hold the state of the battery

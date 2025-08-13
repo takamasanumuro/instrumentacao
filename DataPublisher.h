@@ -1,7 +1,7 @@
 #ifndef DATA_PUBLISHER_H
 #define DATA_PUBLISHER_H
 
-#include "Measurement.h"
+#include "Channel.h"
 #include "Sender.h"
 
 typedef struct {

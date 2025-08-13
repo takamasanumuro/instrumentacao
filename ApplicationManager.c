@@ -14,7 +14,7 @@
 #include "CalibrationHelper.h"
 #include "ConfigYAML.h"
 #include "CsvLogger.h"
-#include "Measurement.h"
+#include "Channel.h"
 #include "Sender.h"
 #include "SocketServer.h"
 #include "util.h"

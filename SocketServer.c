@@ -1,5 +1,5 @@
 #include "SocketServer.h"
-#include "Measurement.h"
+#include "Channel.h"
 #include "DataPublisher.h"
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,7 +1,7 @@
 #ifndef CONFIG_YAML_H
 #define CONFIG_YAML_H
 
-#include "Measurement.h"
+#include "Channel.h"
 #include <stdbool.h>
 #include <stddef.h>
 

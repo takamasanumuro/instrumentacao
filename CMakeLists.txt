@@ -3,9 +3,8 @@ project(instrumentation)
 
 #Add the source files to the build
 set(SOURCES
-    Measurement.c
+    Channel.c
     util.c
-    ConfigurationLoader.c
     CalibrationHelper.c
     LineProtocol.c
     ADS1115.c
@@ -45,22 +44,22 @@ target_compile_options(instrumentation PRIVATE ${YAML_CFLAGS_OTHER})
 option(BUILD_TESTS "Build test executables" ON)
 if(BUILD_TESTS)
     # Basic YAML test
-    add_executable(yaml-test test_yaml.c ConfigYAML.c Measurement.c)
+    add_executable(yaml-test test_yaml.c ConfigYAML.c Channel.c)
     
     # YAML loader test
-    add_executable(yaml-loader-test test_yaml_loader.c ConfigYAML.c Measurement.c)
+    add_executable(yaml-loader-test test_yaml_loader.c ConfigYAML.c Channel.c)
     
     # YAML debug utility
     add_executable(debug-yaml debug_yaml.c)
     
     # YAML validation test
-    add_executable(yaml-validation-test test_yaml_validation.c ConfigYAML.c Measurement.c)
+    add_executable(yaml-validation-test test_yaml_validation.c ConfigYAML.c Channel.c)
     
     # Integration test (uses most sources)
     add_executable(integration-test
         test_integration.c
         ConfigYAML.c
-        Measurement.c
+        Channel.c
         ApplicationManager.c
         BatteryMonitor.c
         CsvLogger.c

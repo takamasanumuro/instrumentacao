@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-#include "Measurement.h"
+#include "Channel.h"
 #include "DataPublisher.h"
 #include "ConfigYAML.h"
 

@@ -1,7 +1,7 @@
 #ifndef MEASUREMENT_COORDINATOR_H
 #define MEASUREMENT_COORDINATOR_H
 
-#include "Measurement.h"
+#include "Channel.h"
 #include "DataPublisher.h"
 #include <gps.h>
 
