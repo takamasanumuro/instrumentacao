@@ -1,0 +1,33 @@
+# Build directories
+build/
+build_test/
+
+# Logs
+logs/
+*.log
+
+# Compiled binaries and object files
+*.o
+*.out
+*.exe
+*.a
+*.so
+
+# CMake files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+Makefile2
+compile_commands.json
+
+# User-specific files
+*.swp
+*.swo
+*~
+.vscode/
+.DS_Store
+
+#AI assistants
+CLAUDE.md
+GEMINI.md

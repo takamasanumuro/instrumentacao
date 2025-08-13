@@ -1,0 +1,50 @@
+# Invalid configuration for testing validation
+metadata:
+  version: "1.0"
+  calibration_date: "2024-08-11"
+  calibrated_by: "Test Engineer"
+  description: "Invalid configuration for validation testing"
+
+hardware:
+  i2c_bus: "/dev/i2c-1"
+  i2c_address: 0xFF  # Invalid: out of range
+
+system:
+  main_loop_interval_ms: -100    # Invalid: negative
+  data_send_interval_ms: 100000  # Invalid: too large
+
+channels:
+  - pin: "A0"
+    id: "test_channel"
+    description: "Test channel"
+    unit: "A"
+    calibration:
+      slope: 0.0        # Invalid: zero slope
+      offset: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+
+  - pin: "A1" 
+    id: "test_channel"  # Invalid: duplicate ID
+    description: "Duplicate channel"
+    unit: "V"
+    calibration:
+      slope: 1e10       # Invalid: suspicious slope
+      offset: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+
+influxdb:
+  url: "${NONEXISTENT_URL}"     # Invalid: env var doesn't exist
+  bucket: "${INFLUXDB_BUCKET}"
+  org: "${INFLUXDB_ORG}" 
+  token: "${INFLUXDB_TOKEN}"
+
+logging:
+  csv_enabled: true
+  csv_directory: "./logs"
+
+battery:
+  coulomb_counting_enabled: true
+  capacity_ah: -50.0             # Invalid: negative capacity
+  current_channel_id: "missing_channel"  # Invalid: channel doesn't exist

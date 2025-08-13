@@ -1,0 +1,125 @@
+# Instrumentation System Configuration
+# Version: 1.0
+# Application: Blank/Template Configuration
+# Use this template for new installations
+
+metadata:
+  version: "1.0"
+  calibration_date: ""
+  calibrated_by: ""
+  description: "Blank template configuration - requires calibration"
+  notes: |
+    This is a template configuration with default values.
+    All channels are disabled (NC = Not Connected).
+    Calibration required before use.
+
+hardware:
+  i2c_bus: "/dev/i2c-1"
+  i2c_address: 0x48
+
+system:
+  main_loop_interval_ms: 100
+  data_send_interval_ms: 500
+
+channels:
+  - pin: "A0"
+    id: "NC"                   # Not Connected
+    description: "Channel A0 - Not configured"
+    unit: "V"
+    calibration:
+      slope: 1.000000          # Unity gain
+      offset: 0.000000         # No offset
+      r_squared: 0.0           # Not calibrated
+      calibration_points: 0
+      range_min: 0.0
+      range_max: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.1
+    validation:
+      min_value: -1000.0
+      max_value: 1000.0
+
+  - pin: "A1"
+    id: "NC"
+    description: "Channel A1 - Not configured"
+    unit: "V"
+    calibration:
+      slope: 1.000000
+      offset: 0.000000
+      r_squared: 0.0
+      calibration_points: 0
+      range_min: 0.0
+      range_max: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.1
+    validation:
+      min_value: -1000.0
+      max_value: 1000.0
+
+  - pin: "A2"
+    id: "NC"
+    description: "Channel A2 - Not configured"
+    unit: "V"
+    calibration:
+      slope: 1.000000
+      offset: 0.000000
+      r_squared: 0.0
+      calibration_points: 0
+      range_min: 0.0
+      range_max: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.1
+    validation:
+      min_value: -1000.0
+      max_value: 1000.0
+
+  - pin: "A3"
+    id: "NC"
+    description: "Channel A3 - Not configured"
+    unit: "V"
+    calibration:
+      slope: 1.000000
+      offset: 0.000000
+      r_squared: 0.0
+      calibration_points: 0
+      range_min: 0.0
+      range_max: 0.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.1
+    validation:
+      min_value: -1000.0
+      max_value: 1000.0
+
+influxdb:
+  url: "${INFLUXDB_URL}"
+  bucket: "${INFLUXDB_BUCKET}"
+  org: "${INFLUXDB_ORG}"
+  token: "${INFLUXDB_TOKEN}"
+  measurement: "measurements"
+  tags:
+    source: "instrumentacao"
+    location: "unknown"
+    version: "1.0"
+
+logging:
+  csv_enabled: true
+  csv_directory: "./logs"
+
+battery:
+  coulomb_counting_enabled: false
+  capacity_ah: 0.0
+  current_channel_id: "NC"
+
+gps:
+  enabled: false
+  gpsd_host: "localhost"
+  gpsd_port: 2947
+
+network:
+  socket_server_enabled: true
+  socket_port: 2025
+  offline_queue_enabled: true
