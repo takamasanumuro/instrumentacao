@@ -15,7 +15,6 @@ set(SOURCES
     Sender.c
     DataQueue.c
     DataPublisher.c
-    MeasurementCoordinator.c
     TimingUtils.c
     HardwareManager.c
     ApplicationManager.c
@@ -64,7 +63,6 @@ if(BUILD_TESTS)
         BatteryMonitor.c
         CsvLogger.c
         HardwareManager.c
-        MeasurementCoordinator.c
         DataPublisher.c
         TimingUtils.c
         Sender.c

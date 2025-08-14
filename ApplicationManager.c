@@ -19,18 +19,15 @@
 #include "SocketServer.h"
 #include "util.h"
 #include "DataPublisher.h"
-#include "MeasurementCoordinator.h"
 #include "TimingUtils.h"
 #include "HardwareManager.h"
 
-// The internal structure of the ApplicationManager, formerly AppContext
+// The internal structure of the ApplicationManager
 struct ApplicationManager {
     volatile sig_atomic_t keep_running;
     char config_file_path[APP_CONFIG_FILE_PATH_MAX];
     YAMLAppConfig* yaml_config;
 
-    Channel channels[NUM_CHANNELS];
-    GPSData gps_measurements;
     BatteryState battery_state;
     SenderContext* sender_ctx;
     CsvLogger csv_logger;
@@ -38,8 +35,7 @@ struct ApplicationManager {
     pthread_mutex_t cal_mutex;
     int cal_sensor_index;
     
-    HardwareManager hardware_manager;
-    MeasurementCoordinator measurement_coordinator;
+    HardwareManager* hardware_manager;
     DataPublisher* data_publisher;
     IntervalTimer send_timer;
 };
@@ -87,43 +83,43 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         fprintf(stderr, "YAML configuration file load failed: %s\n", app->config_file_path);
         return APP_ERROR_CONFIG_LOAD_FAILED;
     }
-    
-    // 1. Initialize hardware using YAML configuration
-    if (!hardware_manager_init_from_yaml(&app->hardware_manager, app->yaml_config)) {
-        fprintf(stderr, "Hardware manager initialization failed\n");
-        config_yaml_free(app->yaml_config);
-        app->yaml_config = NULL;
-        return APP_ERROR_HARDWARE_INIT_FAILED;
-    }
 
-    // 2. Initialize mutex with error checking
-    int mutex_result = pthread_mutex_init(&app->cal_mutex, NULL);
-    if (mutex_result != 0) {
-        fprintf(stderr, "Failed to initialize mutex: %d\n", mutex_result);
-        hardware_manager_cleanup(&app->hardware_manager);
-        return APP_ERROR_MUTEX_INIT_FAILED;
-    }
-    
-    // Validate configuration (YAML already loaded above)
+    // Validate loaded YAML configuration
     char validation_error[512];
     ConfigYAMLResult validation_result = config_yaml_validate_comprehensive(app->yaml_config, validation_error, sizeof(validation_error));
     if (validation_result != CONFIG_YAML_SUCCESS) {
         fprintf(stderr, "YAML configuration validation failed: %s\n", validation_error);
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
-        pthread_mutex_destroy(&app->cal_mutex);
-        hardware_manager_cleanup(&app->hardware_manager);
         return APP_ERROR_CONFIG_LOAD_FAILED;
     }
     
-    // Map YAML configuration to Channel structures
-    if (!config_yaml_map_to_channels(app->yaml_config, app->channels)) {
-        fprintf(stderr, "Failed to map YAML configuration to channels\n");
+    // Initialize hardware using YAML configuration
+    app->hardware_manager = hardware_manager_init_from_yaml(app->yaml_config);
+    if (!app->hardware_manager) {
+        fprintf(stderr, "Hardware manager initialization failed\n");
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
-        pthread_mutex_destroy(&app->cal_mutex);
-        hardware_manager_cleanup(&app->hardware_manager);
+        return APP_ERROR_HARDWARE_INIT_FAILED;
+    }
+
+    // Initialize channels in HardwareManager
+    if (!hardware_manager_init_channels(app->hardware_manager, app->yaml_config)) {
+        fprintf(stderr, "Failed to initialize channels in hardware manager\n");
+        config_yaml_free(app->yaml_config);
+        app->yaml_config = NULL;
+        hardware_manager_cleanup(app->hardware_manager);
         return APP_ERROR_CONFIG_LOAD_FAILED;
+    }
+
+    // Initialize mutex with error checking
+    int mutex_result = pthread_mutex_init(&app->cal_mutex, NULL);
+    if (mutex_result != 0) {
+        fprintf(stderr, "Failed to initialize mutex: %d\n", mutex_result);
+        config_yaml_free(app->yaml_config);
+        app->yaml_config = NULL;
+        hardware_manager_cleanup(app->hardware_manager);
+        return APP_ERROR_MUTEX_INIT_FAILED;
     }
     
     // Initialize sender with YAML configuration
@@ -133,24 +129,10 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
         pthread_mutex_destroy(&app->cal_mutex);
-        hardware_manager_cleanup(&app->hardware_manager);
+        hardware_manager_cleanup(app->hardware_manager);
         return APP_ERROR_SENDER_INIT_FAILED;
     }
     
-    // Initialize high-level coordinators
-    if (!measurement_coordinator_init(&app->measurement_coordinator,
-                                     hardware_manager_get_i2c_handle(&app->hardware_manager),
-                                     hardware_manager_get_gps_data(&app->hardware_manager),
-                                     app->channels,
-                                     &app->gps_measurements)) {
-        fprintf(stderr, "Failed to initialize Measurement Coordinator.\n");
-        sender_destroy(app->sender_ctx);
-        config_yaml_free(app->yaml_config);
-        app->yaml_config = NULL;
-        pthread_mutex_destroy(&app->cal_mutex);
-        hardware_manager_cleanup(&app->hardware_manager);
-        return APP_ERROR_COORDINATOR_INIT_FAILED;
-    }
     
     // Component to publish data to the network
     app->data_publisher = data_publisher_create(app->sender_ctx);
@@ -160,17 +142,17 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
         pthread_mutex_destroy(&app->cal_mutex);
-        hardware_manager_cleanup(&app->hardware_manager);
+        hardware_manager_cleanup(app->hardware_manager);
         return APP_ERROR_PUBLISHER_INIT_FAILED;
     }
     
     // Transmission interval for sending networked data
     double send_interval_s = app->yaml_config->system.data_send_interval_ms / 1000.0;
     interval_timer_init(&app->send_timer, send_interval_s);
-    csv_logger_init_from_yaml(&app->csv_logger, app->channels, app->yaml_config);
+    csv_logger_init_from_yaml(&app->csv_logger, hardware_manager_get_channels(app->hardware_manager), app->yaml_config);
     
     // Initialize battery monitor with YAML configuration
-    battery_monitor_init_from_yaml(&app->battery_state, app->channels, app->yaml_config);
+    battery_monitor_init_from_yaml(&app->battery_state, hardware_manager_get_channels(app->hardware_manager), app->yaml_config);
 
     printf("Application Manager initialized successfully with YAML config: %s\n", app->config_file_path);
     printf("  - Hardware I2C: %s at 0x%02lx\n", app->yaml_config->hardware.i2c_bus, app->yaml_config->hardware.i2c_address);
@@ -184,15 +166,26 @@ void app_manager_run(ApplicationManager* app) {
     if (!app) return;
 
     while (app->keep_running) {
-        measurement_coordinator_collect(&app->measurement_coordinator);
+        // Collect measurements via HardwareManager
+        hardware_manager_collect_measurements(app->hardware_manager);
         
         if (interval_timer_should_trigger(&app->send_timer)) {
-            data_publisher_publish(app->data_publisher, app->channels, &app->gps_measurements);
+            // Get current data from hardware manager
+            const Channel* channels = hardware_manager_get_channels(app->hardware_manager);
+            GPSData gps_data;
+            hardware_manager_get_current_gps(app->hardware_manager, &gps_data);
+            
+            data_publisher_publish(app->data_publisher, channels, &gps_data);
             interval_timer_mark_triggered(&app->send_timer);
         }
         
-        csv_logger_log(&app->csv_logger, app->channels, &app->gps_measurements);
-        print_current_measurements(app->channels, &app->gps_measurements);
+        // Log and display using hardware manager data
+        const Channel* channels = hardware_manager_get_channels(app->hardware_manager);
+        GPSData gps_data;
+        hardware_manager_get_current_gps(app->hardware_manager, &gps_data);
+        
+        csv_logger_log(&app->csv_logger, channels, &gps_data);
+        print_current_measurements(channels, &gps_data);
         
         usleep(app->yaml_config->system.main_loop_interval_ms * 1000);
     }
@@ -204,7 +197,7 @@ void app_manager_destroy(ApplicationManager* app) {
     printf("\nCleaning up resources...\n");
     
     data_publisher_destroy(app->data_publisher);
-    hardware_manager_cleanup(&app->hardware_manager);
+    hardware_manager_cleanup(app->hardware_manager);
     sender_destroy(app->sender_ctx);
     csv_logger_close(&app->csv_logger);
     pthread_mutex_destroy(&app->cal_mutex);
@@ -241,8 +234,6 @@ const char* app_manager_error_string(AppManagerError error) {
             return "Configuration file load failed";
         case APP_ERROR_SENDER_INIT_FAILED:
             return "Sender initialization failed";
-        case APP_ERROR_COORDINATOR_INIT_FAILED:
-            return "Measurement coordinator initialization failed";
         case APP_ERROR_PUBLISHER_INIT_FAILED:
             return "Data publisher initialization failed";
         case APP_ERROR_MUTEX_INIT_FAILED:

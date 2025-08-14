@@ -31,3 +31,6 @@ compile_commands.json
 #AI assistants
 CLAUDE.md
 GEMINI.md
+
+# IDE files
+.idea

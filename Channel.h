@@ -13,10 +13,14 @@ typedef struct {
     char id[MEASUREMENT_ID_SIZE];
     char unit[UNIT_SIZE];
     char gain_setting[GAIN_SETTING_SIZE];
+    int pin;  // ADC pin number (A0, A1, A2, A3)
 
     // Calibration
     double slope;
     double offset;
+
+    // Filtering
+    double filter_alpha;  // EMA filter alpha value from YAML
 
     // Live Data
     int raw_adc_value;

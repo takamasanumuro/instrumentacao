@@ -3,13 +3,7 @@
 
 #include "Channel.h"
 #include "Sender.h"
-
-typedef struct {
-    double latitude;
-    double longitude;
-    double altitude;
-    double speed;
-} GPSData;
+#include "HardwareManager.h"  // For GPSData
 
 typedef struct DataPublisher DataPublisher;
 

@@ -149,6 +149,7 @@ gps:
 network:
   socket_server_enabled: true
   socket_port: 2025            # TCP port for local clients
+  update_interval_ms: 500      # JSON API update interval (milliseconds)
   max_clients: 5               # Maximum concurrent connections
   offline_queue_enabled: true  # Queue data when offline
   offline_queue_max_size_mb: 50 # Maximum offline queue size

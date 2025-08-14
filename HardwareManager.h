@@ -1,33 +1,49 @@
 #ifndef HARDWARE_MANAGER_H
 #define HARDWARE_MANAGER_H
 
-#include <gps.h>
 #include <stdbool.h>
 #include "ConfigYAML.h"
+#include "Channel.h"
 
+// Simpler GPS data structure for application use
+// Must be checked with isfinite() before each use
 typedef struct {
-    int i2c_handle;
-    struct gps_data_t gps_data;
-    bool gps_connected;
-    char i2c_bus_path[256];  // Store for debugging/logging
-    long i2c_address;
-} HardwareManager;
+    double latitude;
+    double longitude;
+    double altitude;
+    double speed;
+} GPSData;
+
+// Opaque HardwareManager structure
+typedef struct HardwareManager HardwareManager;
 
 // Initialize hardware subsystems using parameters
-bool hardware_manager_init(HardwareManager* hw_manager, 
-                          const char* i2c_bus_path, 
-                          long i2c_address);
-
+HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_address);
+                          
 // Initialize hardware subsystems using YAML configuration
-bool hardware_manager_init_from_yaml(HardwareManager* hw_manager, 
-                                    const YAMLAppConfig* config);
+HardwareManager* hardware_manager_init_from_yaml(const YAMLAppConfig* config);                        
+
+// Initialize channels from YAML configuration
+bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppConfig* config);
 
 // Cleanup hardware resources
 void hardware_manager_cleanup(HardwareManager* hw_manager);
 
-// Accessors for hardware handles
-int hardware_manager_get_i2c_handle(const HardwareManager* hw_manager);
-struct gps_data_t* hardware_manager_get_gps_data(HardwareManager* hw_manager);
-bool hardware_manager_is_gps_connected(const HardwareManager* hw_manager);
+// === Channel Management Interface ===
+// Collect measurements from all active channels
+bool hardware_manager_collect_measurements(HardwareManager* hw_manager);
+
+// Get channel data (read-only access)
+const Channel* hardware_manager_get_channels(const HardwareManager* hw_manager);
+const Channel* hardware_manager_get_channel(const HardwareManager* hw_manager, int index);
+int hardware_manager_get_channel_count(const HardwareManager* hw_manager);
+
+// Update channel calibration
+bool hardware_manager_update_channel_calibration(HardwareManager* hw_manager, int index, double slope, double offset);
+
+// === GPS Data Interface ===
+// Get current GPS data (on-demand)
+bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_data);
+bool hardware_manager_is_gps_available(const HardwareManager* hw_manager);
 
 #endif // HARDWARE_MANAGER_H

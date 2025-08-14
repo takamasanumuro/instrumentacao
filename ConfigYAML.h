@@ -46,6 +46,13 @@ typedef struct {
     char current_channel_id[MEASUREMENT_ID_SIZE];
 } BatteryConfig;
 
+// Network configuration
+typedef struct {
+    bool socket_server_enabled;
+    int socket_port;
+    int update_interval_ms;
+} NetworkConfig;
+
 // Main YAML configuration structure
 typedef struct {
     ConfigMetadata metadata;
@@ -56,6 +63,7 @@ typedef struct {
     InfluxDBConfig influxdb;
     LoggingConfig logging;
     BatteryConfig battery;
+    NetworkConfig network;
 } YAMLAppConfig;
 
 // Error codes for YAML configuration operations

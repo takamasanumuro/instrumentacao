@@ -8,7 +8,10 @@ void channel_init(Channel* channel) {
     memset(channel, 0, sizeof(Channel));
     channel->slope = 1.0;
     channel->offset = 0.0;
+    channel->filter_alpha = 0.1; // Default alpha value
     channel->is_active = false;
+    channel->pin = -1; // Initialize to invalid pin
+    strcpy(channel->id, "NC"); // Default to "Not Connected"
 }
 
 double channel_get_calibrated_value(const Channel* channel) {

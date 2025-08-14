@@ -79,7 +79,7 @@ YAMLAppConfig* config_yaml_load(const char* filename) {
         fclose(file);
         return NULL;
     }
-
+    
     // Initialize YAML parser
     if (!yaml_parser_initialize(&ctx.parser)) {
         fprintf(stderr, "ConfigYAML: Failed to initialize YAML parser\n");
@@ -251,6 +251,27 @@ ConfigYAMLResult config_yaml_validate_comprehensive(const YAMLAppConfig* config,
                 snprintf(error_message, error_size,
                         "Battery current channel '%s' not found in active channels",
                         config->battery.current_channel_id);
+            }
+            return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+        }
+    }
+
+    // Validate network configuration
+    if (config->network.socket_server_enabled) {
+        if (config->network.socket_port <= 1024 || config->network.socket_port > 65535) {
+            if (error_message && error_size > 0) {
+                snprintf(error_message, error_size,
+                        "Invalid socket port: %d (must be 1025-65535)",
+                        config->network.socket_port);
+            }
+            return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+        }
+        
+        if (config->network.update_interval_ms < 100 || config->network.update_interval_ms > 10000) {
+            if (error_message && error_size > 0) {
+                snprintf(error_message, error_size,
+                        "Invalid update interval: %d ms (must be 100-10000)",
+                        config->network.update_interval_ms);
             }
             return CONFIG_YAML_ERROR_VALIDATION_FAILED;
         }
@@ -694,6 +715,26 @@ static bool parse_single_channel(YAMLParseContext* ctx, Channel* channel) {
         if (strcmp(key, "pin") == 0) {
             char pin_str[16];
             if (!get_scalar_value(ctx, pin_str, sizeof(pin_str))) return false;
+            
+            // Parse pin string to pin number
+            if (strcmp(pin_str, "A0") == 0) {
+                channel->pin = 0;
+            } else if (strcmp(pin_str, "A1") == 0) {
+                channel->pin = 1;
+            } else if (strcmp(pin_str, "A2") == 0) {
+                channel->pin = 2;
+            } else if (strcmp(pin_str, "A3") == 0) {
+                channel->pin = 3;
+            } else {
+                // Try parsing as integer
+                char* endptr;
+                long pin_num = strtol(pin_str, &endptr, 10);
+                if (*endptr == '\0' && pin_num >= 0 && pin_num <= 3) {
+                    channel->pin = (int)pin_num;
+                } else {
+                    channel->pin = -1; // Invalid pin
+                }
+            }
         } else if (strcmp(key, "id") == 0) {
             if (!get_scalar_value(ctx, channel->id, sizeof(channel->id))) return false;
         } else if (strcmp(key, "description") == 0) {
@@ -781,9 +822,7 @@ static bool parse_adc_section(YAMLParseContext* ctx, Channel* channel) {
             if (!get_scalar_value(ctx, channel->gain_setting, 
                                 sizeof(channel->gain_setting))) return false;
         } else if (strcmp(key, "filter_alpha") == 0) {
-            double filter_alpha;
-            if (!get_scalar_double(ctx, &filter_alpha)) return false;
-            // filter_alpha not stored in Channel struct currently
+            if (!get_scalar_double(ctx, &channel->filter_alpha)) return false;
         } else {
             // Skip other ADC fields
             if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
@@ -941,9 +980,37 @@ static bool parse_gps_section(YAMLParseContext* ctx) {
 }
 
 static bool parse_network_section(YAMLParseContext* ctx) {
-    // Network section - just skip for now as it's not in our config struct  
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
-    return skip_mapping(ctx);
+    
+    char key[256];
+    while (true) {
+        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        
+        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ctx->event);
+            break;
+        }
+        
+        if (!get_current_scalar_key(ctx, key, sizeof(key))) {
+            yaml_event_delete(&ctx->event);
+            return false;
+        }
+        yaml_event_delete(&ctx->event);
+        
+        if (strcmp(key, "socket_server_enabled") == 0) {
+            if (!get_scalar_bool(ctx, &ctx->config->network.socket_server_enabled)) return false;
+        } else if (strcmp(key, "socket_port") == 0) {
+            if (!get_scalar_int(ctx, &ctx->config->network.socket_port)) return false;
+        } else if (strcmp(key, "update_interval_ms") == 0) {
+            if (!get_scalar_int(ctx, &ctx->config->network.update_interval_ms)) return false;
+        } else {
+            // Skip unknown network fields
+            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+            yaml_event_delete(&ctx->event);
+        }
+    }
+    
+    return true;
 }
 
 // --- Helper Functions ---
@@ -1239,6 +1306,10 @@ bool config_yaml_map_to_channels(const YAMLAppConfig* config, Channel* channels)
         // Copy calibration data
         target_channel->slope = yaml_channel->slope;
         target_channel->offset = yaml_channel->offset;
+        
+        // Copy pin number and filter alpha
+        target_channel->pin = yaml_channel->pin;
+        target_channel->filter_alpha = yaml_channel->filter_alpha;
         
         // Set as active if it has a valid ID (not "NC" and not empty)
         if (strlen(target_channel->id) > 0 && 
