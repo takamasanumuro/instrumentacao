@@ -603,6 +603,10 @@ static bool parse_hardware_section(YAMLParseContext* ctx) {
                                 sizeof(ctx->config->hardware.i2c_bus))) return false;
         } else if (strcmp(key, "i2c_address") == 0) {
             if (!get_scalar_long(ctx, &ctx->config->hardware.i2c_address)) return false;
+        } else if (strcmp(key, "i2c_max_retries") == 0) {
+            if (!get_scalar_int(ctx, &ctx->config->hardware.i2c_max_retries)) return false;
+        } else if (strcmp(key, "i2c_retry_delay_ms") == 0) {
+            if (!get_scalar_int(ctx, &ctx->config->hardware.i2c_retry_delay_ms)) return false;
         } else {
             // Skip unknown hardware fields
             if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;

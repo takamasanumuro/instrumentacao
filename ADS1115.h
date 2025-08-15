@@ -16,6 +16,12 @@ int ads1115_init(const char* i2c_bus_str, long i2c_address);
 // Returns 0 on success, or a negative value on error.
 int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t *conversionResult);
 
+// Function to read with retry mechanism and exponential backoff.
+// Attempts to read up to max_retries times with increasing delays.
+// Returns 0 on success, or a negative value if all retries failed.
+int ads1115_read_with_retry(int i2c_handle, uint8_t channel, const char* gain_str, 
+                           int16_t *conversionResult, int max_retries);
+
 // Function to close the I2C device handle.
 void ads1115_close(int i2c_handle);
 

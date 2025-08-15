@@ -17,6 +17,8 @@ metadata:
 hardware:
   i2c_bus: "/dev/i2c-3"
   i2c_address: 0x48  # ADS1115 default address
+  i2c_max_retries: 3        # Maximum I2C read retry attempts
+  i2c_retry_delay_ms: 1     # Base retry delay (exponential backoff)
 
 system:
   main_loop_interval_ms: 100    # 10 Hz sampling rate

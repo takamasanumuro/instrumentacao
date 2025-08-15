@@ -26,6 +26,9 @@ HardwareManager* hardware_manager_init_from_yaml(const YAMLAppConfig* config);
 // Initialize channels from YAML configuration
 bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppConfig* config);
 
+// Set I2C retry parameters from configuration
+void hardware_manager_set_i2c_retry_params(HardwareManager* hw_manager, int max_retries, int base_delay_ms);
+
 // Cleanup hardware resources
 void hardware_manager_cleanup(HardwareManager* hw_manager);
 

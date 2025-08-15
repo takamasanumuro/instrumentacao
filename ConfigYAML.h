@@ -17,6 +17,8 @@ typedef struct {
 typedef struct {
     char i2c_bus[64];
     long i2c_address;
+    int i2c_max_retries;     // Maximum I2C read retry attempts
+    int i2c_retry_delay_ms;  // Base retry delay in milliseconds
 } HardwareConfig;
 
 // System timing configuration  

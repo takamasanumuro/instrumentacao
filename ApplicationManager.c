@@ -111,6 +111,11 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         hardware_manager_cleanup(app->hardware_manager);
         return APP_ERROR_CONFIG_LOAD_FAILED;
     }
+    
+    // Configure I2C retry parameters from YAML
+    hardware_manager_set_i2c_retry_params(app->hardware_manager, 
+                                         app->yaml_config->hardware.i2c_max_retries,
+                                         app->yaml_config->hardware.i2c_retry_delay_ms);
 
     // Initialize mutex with error checking
     int mutex_result = pthread_mutex_init(&app->cal_mutex, NULL);

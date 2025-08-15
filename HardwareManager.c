@@ -17,6 +17,10 @@ struct HardwareManager {
     char i2c_bus_path[256];
     long i2c_address;
     
+    // I2C retry configuration
+    int i2c_max_retries;
+    int i2c_base_delay_ms;
+    
     // Channel management
     Channel channels[NUM_CHANNELS];
     int channel_count;
@@ -36,6 +40,11 @@ HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_addres
     }
 
     strncpy(hw_manager->i2c_bus_path, i2c_bus_path, sizeof(hw_manager->i2c_bus_path) - 1);
+    hw_manager->i2c_bus_path[sizeof(hw_manager->i2c_bus_path) - 1] = '\0';
+    
+    // Set default I2C retry parameters
+    hw_manager->i2c_max_retries = 3;
+    hw_manager->i2c_base_delay_ms = 1;
 
     // Initialize I2C
     hw_manager->i2c_handle = ads1115_init(i2c_bus_path, i2c_address);
@@ -140,15 +149,16 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
         }
 
         int16_t raw_value;
-        int result = ads1115_read(hw_manager->i2c_handle, channel->pin, 
-                                 channel->gain_setting, &raw_value);
+        int result = ads1115_read_with_retry(hw_manager->i2c_handle, channel->pin, 
+                                           channel->gain_setting, &raw_value, 
+                                           hw_manager->i2c_max_retries);
         
         if (result == 0) {
             channel_update_raw_value(channel, (int)raw_value);
             // Apply filtering using channel's alpha value from YAML
             channel_apply_filter(channel, channel->filter_alpha);
         } else {
-            fprintf(stderr, "Hardware: Failed to read from channel %s (pin %d)\n", 
+            fprintf(stderr, "Hardware: Failed to read from channel %s (pin %d) after retries\n", 
                    channel->id, channel->pin);
             all_success = false;
         }
@@ -229,6 +239,16 @@ bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_
     }
 
     return false;
+}
+
+void hardware_manager_set_i2c_retry_params(HardwareManager* hw_manager, int max_retries, int base_delay_ms) {
+    if (!hw_manager) return;
+    
+    hw_manager->i2c_max_retries = (max_retries > 0) ? max_retries : 3;
+    hw_manager->i2c_base_delay_ms = (base_delay_ms > 0) ? base_delay_ms : 1;
+    
+    printf("Hardware: I2C retry configured - max_retries=%d, base_delay=%dms\n", 
+           hw_manager->i2c_max_retries, hw_manager->i2c_base_delay_ms);
 }
 
 bool hardware_manager_is_gps_available(const HardwareManager* hw_manager) {
