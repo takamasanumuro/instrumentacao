@@ -13,22 +13,25 @@ struct HardwareManager {
     // Hardware interfaces
     struct gps_data_t gps_data;
     bool gps_connected;
-    int i2c_handle;
     char i2c_bus_path[256];
-    long i2c_address;
+    
+    // Multi-board I2C management
+    int board_handles[MAX_BOARDS];     // I2C handles for each board
+    int board_addresses[MAX_BOARDS];   // I2C addresses for each board
+    int active_board_count;
     
     // I2C retry configuration
     int i2c_max_retries;
     int i2c_base_delay_ms;
     
-    // Channel management
-    Channel channels[NUM_CHANNELS];
+    // Channel management (up to 16 channels across 4 boards)
+    Channel channels[MAX_TOTAL_CHANNELS];
     int channel_count;
     bool channels_initialized;
 };
 
-HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_address) {                        
-    if (!i2c_bus_path) {
+HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addresses, int board_count) {                        
+    if (!i2c_bus_path || !board_addresses || board_count <= 0 || board_count > MAX_BOARDS) {
         return NULL;
     }
 
@@ -46,21 +49,43 @@ HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_addres
     hw_manager->i2c_max_retries = 3;
     hw_manager->i2c_base_delay_ms = 1;
 
-    // Initialize I2C
-    hw_manager->i2c_handle = ads1115_init(i2c_bus_path, i2c_address);
-    if (hw_manager->i2c_handle < 0) {
-        fprintf(stderr, "Hardware: Failed to initialize I2C bus %s at address 0x%lx\n", 
-                i2c_bus_path, i2c_address);
-        return false;
+    // Initialize all board handles to invalid
+    for (int i = 0; i < MAX_BOARDS; i++) {
+        hw_manager->board_handles[i] = -1;
+        hw_manager->board_addresses[i] = -1;
     }
-    printf("Hardware: I2C initialized successfully on %s at 0x%lx\n", 
-           i2c_bus_path, i2c_address);
+
+    // Initialize I2C for each board
+    hw_manager->active_board_count = 0;
+    for (int i = 0; i < board_count; i++) {
+        int board_handle = ads1115_init(i2c_bus_path, board_addresses[i]);
+        if (board_handle < 0) {
+            fprintf(stderr, "Hardware: Failed to initialize board at address 0x%02x\n", 
+                    board_addresses[i]);
+            continue; // Skip failed boards but continue with others
+        }
+        
+        hw_manager->board_handles[hw_manager->active_board_count] = board_handle;
+        hw_manager->board_addresses[hw_manager->active_board_count] = board_addresses[i];
+        hw_manager->active_board_count++;
+        
+        printf("Hardware: Board %d initialized at address 0x%02x\n", 
+               hw_manager->active_board_count, board_addresses[i]);
+    }
+
+    if (hw_manager->active_board_count == 0) {
+        fprintf(stderr, "Hardware: No boards successfully initialized\n");
+        free(hw_manager);
+        return NULL;
+    }
+
+    printf("Hardware: %d/%d boards initialized successfully on %s\n", 
+           hw_manager->active_board_count, board_count, i2c_bus_path);
 
     // Initialize GPS
     if (gps_open("localhost", "2947", &hw_manager->gps_data) != 0) {
         fprintf(stderr, "Hardware: Could not connect to gpsd (continuing without GPS)\n");
         hw_manager->gps_connected = false;
-        // Don't fail initialization - GPS is optional for some use cases
     } else {
         if (gps_stream(&hw_manager->gps_data, WATCH_ENABLE | WATCH_JSON, NULL) < 0) {
             fprintf(stderr, "Hardware: Failed to start GPS streaming\n");
@@ -76,12 +101,19 @@ HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_addres
 }
 
 HardwareManager* hardware_manager_init_from_yaml(const YAMLAppConfig* config) {                                 
-    if (!config) {
-        return NULL;
-    }
+    if (!config) return NULL;
+    if (config->hardware.board_count <= 0) return NULL;
 
-    // Initialize using YAML configuration
-    return hardware_manager_init(config->hardware.i2c_bus, config->hardware.i2c_address);                                                   
+    // Extract board addresses from YAML configuration
+    int board_addresses[MAX_BOARDS];
+    int count = config->hardware.board_count < MAX_BOARDS ? 
+                config->hardware.board_count : MAX_BOARDS;
+                
+    for (int i = 0; i < count; i++) {
+        board_addresses[i] = config->hardware.boards[i].address;
+    }
+    
+    return hardware_manager_init(config->hardware.i2c_bus, board_addresses, count);                                                   
 }
 
 void hardware_manager_cleanup(HardwareManager* hw_manager) {
@@ -89,12 +121,16 @@ void hardware_manager_cleanup(HardwareManager* hw_manager) {
 
     printf("Hardware: Cleaning up resources...\n");
 
-    // Cleanup I2C
-    if (hw_manager->i2c_handle >= 0) {
-        ads1115_close(hw_manager->i2c_handle);
-        hw_manager->i2c_handle = -1;
-        printf("Hardware: I2C closed\n");
+    // Close all board I2C handles
+    for (int i = 0; i < hw_manager->active_board_count; i++) {
+        if (hw_manager->board_handles[i] < 0) continue;
+        
+        ads1115_close(hw_manager->board_handles[i]);
+        printf("Hardware: Board at 0x%02x closed\n", hw_manager->board_addresses[i]);
+        hw_manager->board_handles[i] = -1;
     }
+    hw_manager->active_board_count = 0;
+    printf("Hardware: All I2C boards closed\n");
 
     // Cleanup GPS
     if (hw_manager->gps_connected) {
@@ -103,6 +139,8 @@ void hardware_manager_cleanup(HardwareManager* hw_manager) {
         hw_manager->gps_connected = false;
         printf("Hardware: GPS disconnected\n");
     }
+    
+    free(hw_manager);
 }
 
 bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppConfig* config) {
@@ -116,7 +154,7 @@ bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppCo
     }
 
     // Initialize all channels with defaults first
-    for (int i = 0; i < NUM_CHANNELS; i++) {
+    for (int i = 0; i < MAX_TOTAL_CHANNELS; i++) {
         channel_init(&hw_manager->channels[i]);
     }
 
@@ -126,30 +164,46 @@ bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppCo
         return false;
     }
 
-    hw_manager->channel_count = config->channel_count < NUM_CHANNELS ? 
-                               config->channel_count : NUM_CHANNELS;
+    hw_manager->channel_count = config->channel_count < MAX_TOTAL_CHANNELS ? 
+                               config->channel_count : MAX_TOTAL_CHANNELS;
     hw_manager->channels_initialized = true;
 
     printf("Hardware: Initialized %d channels from YAML configuration\n", hw_manager->channel_count);
     return true;
 }
 
-bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
-    if (!hw_manager || !hw_manager->channels_initialized || hw_manager->i2c_handle < 0) {
-        return false;
+static int find_board_handle(HardwareManager* hw_manager, int board_address) {
+    for (int i = 0; i < hw_manager->active_board_count; i++) {
+        if (hw_manager->board_addresses[i] == board_address) {
+            return hw_manager->board_handles[i];
+        }
     }
+    return -1; // Board not found
+}
+
+bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
+    if (!hw_manager) return false;
+    if (!hw_manager->channels_initialized) return false;
+    if (hw_manager->active_board_count == 0) return false;
 
     bool all_success = true;
 
     for (int i = 0; i < hw_manager->channel_count; i++) {
         Channel* channel = &hw_manager->channels[i];
         
-        if (!channel->is_active) {
+        if (!channel->is_active) continue;
+
+        // Find the I2C handle for this channel's board
+        int board_handle = find_board_handle(hw_manager, channel->board_address);
+        if (board_handle < 0) {
+            fprintf(stderr, "Hardware: Board 0x%02x not found for channel %s\n", 
+                   channel->board_address, channel->id);
+            all_success = false;
             continue;
         }
 
         int16_t raw_value;
-        int result = ads1115_read_with_retry(hw_manager->i2c_handle, channel->pin, 
+        int result = ads1115_read_with_retry(board_handle, channel->pin, 
                                            channel->gain_setting, &raw_value, 
                                            hw_manager->i2c_max_retries);
         
@@ -158,8 +212,8 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
             // Apply filtering using channel's alpha value from YAML
             channel_apply_filter(channel, channel->filter_alpha);
         } else {
-            fprintf(stderr, "Hardware: Failed to read from channel %s (pin %d) after retries\n", 
-                   channel->id, channel->pin);
+            fprintf(stderr, "Hardware: Failed to read channel %s (board 0x%02x, pin %d) after retries\n", 
+                   channel->id, channel->board_address, channel->pin);
             all_success = false;
         }
     }
@@ -214,7 +268,7 @@ bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_
     }
 
     // Check for new GPS data
-    if (gps_waiting(&hw_manager->gps_data, 1000000)) {  // 1 second timeout
+    if (gps_waiting(&hw_manager->gps_data, 1000)) {  // 1 millisecond timeout
         if (gps_read(&hw_manager->gps_data, NULL, 0) == -1) {
             fprintf(stderr, "Hardware: GPS read error\n");
             return false;

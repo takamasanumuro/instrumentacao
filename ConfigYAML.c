@@ -30,6 +30,8 @@ static bool parse_single_channel(YAMLParseContext* ctx, Channel* channel);
 static bool parse_calibration_section(YAMLParseContext* ctx, Channel* channel);
 static bool parse_adc_section(YAMLParseContext* ctx, Channel* channel);
 static bool parse_validation_section(YAMLParseContext* ctx, Channel* channel);
+static bool parse_boards_section(YAMLParseContext* ctx);
+static bool parse_single_board(YAMLParseContext* ctx, BoardConfig* board);
 static bool parse_influxdb_section(YAMLParseContext* ctx);
 static bool parse_logging_section(YAMLParseContext* ctx);
 static bool parse_battery_section(YAMLParseContext* ctx);
@@ -256,6 +258,66 @@ ConfigYAMLResult config_yaml_validate_comprehensive(const YAMLAppConfig* config,
         }
     }
 
+    // Validate hardware configuration
+    if (config->hardware.board_count <= 0 || config->hardware.board_count > MAX_BOARDS) {
+        if (error_message && error_size > 0) {
+            snprintf(error_message, error_size,
+                    "Invalid board count: %d (must be 1-%d)",
+                    config->hardware.board_count, MAX_BOARDS);
+        }
+        return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+    }
+
+    // Validate board addresses are unique and in valid range
+    for (int i = 0; i < config->hardware.board_count; i++) {
+        int addr = config->hardware.boards[i].address;
+        
+        // Check valid ADS1115 address range (0x48-0x4B)
+        if (addr < 0x48 || addr > 0x4B) {
+            if (error_message && error_size > 0) {
+                snprintf(error_message, error_size,
+                        "Invalid board address: 0x%02x (must be 0x48-0x4B)",
+                        addr);
+            }
+            return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+        }
+        
+        // Check for duplicate addresses
+        for (int j = i + 1; j < config->hardware.board_count; j++) {
+            if (config->hardware.boards[j].address == addr) {
+                if (error_message && error_size > 0) {
+                    snprintf(error_message, error_size,
+                            "Duplicate board address: 0x%02x", addr);
+                }
+                return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+            }
+        }
+    }
+
+    // Validate channel board addresses exist in configured boards
+    for (size_t i = 0; i < config->channel_count; i++) {
+        if (!config->channels[i].is_active) continue;
+        
+        bool board_found = false;
+        int channel_board_addr = config->channels[i].board_address;
+        
+        for (int j = 0; j < config->hardware.board_count; j++) {
+            if (config->hardware.boards[j].address == channel_board_addr) {
+                board_found = true;
+                break;
+            }
+        }
+        
+        if (!board_found) {
+            if (error_message && error_size > 0) {
+                snprintf(error_message, error_size,
+                        "Channel '%s' references undefined board address: 0x%02x",
+                        config->channels[i].id, channel_board_addr);
+            }
+            return CONFIG_YAML_ERROR_VALIDATION_FAILED;
+        }
+    }
+
     // Validate network configuration
     if (config->network.socket_server_enabled) {
         if (config->network.socket_port <= 1024 || config->network.socket_port > 65535) {
@@ -322,32 +384,8 @@ ConfigYAMLResult config_yaml_validate_hardware(const YAMLAppConfig* config,
         return CONFIG_YAML_ERROR_VALIDATION_FAILED;
     }
 
-    // Validate I2C address range
-    // 
-    // I2C uses 7-bit addressing in an 8-bit field:
-    // Bit:  7   6   5   4   3   2   1   0
-    //      [A6][A5][A4][A3][A2][A1][A0][R/W]
-    //
-    // Reserved address ranges per I2C specification:
-    // 0x00-0x02: Special purposes
-    //   0x00 = General call address (broadcast)
-    //   0x01 = CBUS address compatibility
-    //   0x02 = Reserved for different bus format
-    // 0x78-0x7F: Reserved for future use and 10-bit addressing
-    //   0x78-0x7B = 10-bit addressing escape sequences
-    //   0x7C-0x7F = Reserved for future use
-    //
-    // Valid device addresses: 0x03-0x77 (117 total usable addresses)
-    if (config->hardware.i2c_address < 0x03 || config->hardware.i2c_address > 0x77) {
-        if (error_message && error_size > 0) {
-            snprintf(error_message, error_size,
-                    "Invalid I2C address: 0x%02lx (must be 0x03-0x77). "
-                    "Addresses 0x00-0x02 are reserved for I2C protocol functions, "
-                    "and 0x78-0x7F are reserved for 10-bit addressing and future use.",
-                    config->hardware.i2c_address);
-        }
-        return CONFIG_YAML_ERROR_VALIDATION_FAILED;
-    }
+    // I2C address validation is now handled in the comprehensive validation 
+    // function for each board in the boards array
 
     // Check I2C bus path accessibility (basic check)
     if (access(config->hardware.i2c_bus, F_OK) != 0) {
@@ -583,34 +621,36 @@ static bool parse_hardware_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    HardwareConfig* hw_config = &ctx->config->hardware;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-        
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (!yaml_parser_parse(parser, event)) return false;
+
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         // Extract key from current event
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
-        
+        yaml_event_delete(event);
+
         if (strcmp(key, "i2c_bus") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->hardware.i2c_bus,
-                                sizeof(ctx->config->hardware.i2c_bus))) return false;
-        } else if (strcmp(key, "i2c_address") == 0) {
-            if (!get_scalar_long(ctx, &ctx->config->hardware.i2c_address)) return false;
+            if (!get_scalar_value(ctx, hw_config->i2c_bus, sizeof(hw_config->i2c_bus))) return false;
         } else if (strcmp(key, "i2c_max_retries") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->hardware.i2c_max_retries)) return false;
+            if (!get_scalar_int(ctx, &hw_config->i2c_max_retries)) return false;
         } else if (strcmp(key, "i2c_retry_delay_ms") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->hardware.i2c_retry_delay_ms)) return false;
-        } else {
-            // Skip unknown hardware fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!get_scalar_int(ctx, &hw_config->i2c_retry_delay_ms)) return false;
+        } else if (strcmp(key, "boards") == 0) {
+            if (!parse_boards_section(ctx)) return false;
+        } else { // Skip unknown hardware fields  
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -739,6 +779,8 @@ static bool parse_single_channel(YAMLParseContext* ctx, Channel* channel) {
                     channel->pin = -1; // Invalid pin
                 }
             }
+        } else if (strcmp(key, "board_address") == 0) {
+            if (!get_scalar_int(ctx, &channel->board_address)) return false;
         } else if (strcmp(key, "id") == 0) {
             if (!get_scalar_value(ctx, channel->id, sizeof(channel->id))) return false;
         } else if (strcmp(key, "description") == 0) {
@@ -1017,6 +1059,77 @@ static bool parse_network_section(YAMLParseContext* ctx) {
     return true;
 }
 
+static bool parse_boards_section(YAMLParseContext* ctx) {
+    if (!expect_event_type(ctx, YAML_SEQUENCE_START_EVENT)) return false;
+    
+    // Allocate fixed-size boards array (maximum 4 ADS1115 boards per I2C bus)
+    ctx->config->hardware.boards = calloc(MAX_BOARDS, sizeof(BoardConfig));
+    if (!ctx->config->hardware.boards) {
+        return false;
+    }
+    
+    while (true) {
+        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        
+        if (ctx->event.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&ctx->event);
+            break;
+        }
+        
+        // Check maximum board limit (ADS1115 only supports 4 addresses: 0x48-0x4B)
+        if (ctx->config->hardware.board_count >= MAX_BOARDS) {
+            yaml_event_delete(&ctx->event);
+            return false;
+        }
+        
+        if (ctx->event.type == YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&ctx->event);
+            if (!parse_single_board(ctx, &ctx->config->hardware.boards[ctx->config->hardware.board_count])) {
+                return false;
+            }
+            ctx->config->hardware.board_count++;
+        } else {
+            yaml_event_delete(&ctx->event);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+static bool parse_single_board(YAMLParseContext* ctx, BoardConfig* board) {
+    // Initialize board with defaults
+    memset(board, 0, sizeof(BoardConfig));
+    
+    char key[256];
+    while (true) {
+        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        
+        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&ctx->event);
+            break;
+        }
+        
+        if (!get_current_scalar_key(ctx, key, sizeof(key))) {
+            yaml_event_delete(&ctx->event);
+            return false;
+        }
+        yaml_event_delete(&ctx->event);
+        
+        if (strcmp(key, "address") == 0) {
+            if (!get_scalar_int(ctx, &board->address)) return false;
+        } else if (strcmp(key, "description") == 0) {
+            if (!get_scalar_value(ctx, board->description, sizeof(board->description))) return false;
+        } else {
+            // Skip unknown board fields
+            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+            yaml_event_delete(&ctx->event);
+        }
+    }
+    
+    return true;
+}
+
 // --- Helper Functions ---
 
 static bool expect_event_type(YAMLParseContext* ctx, yaml_event_type_t expected) {
@@ -1087,7 +1200,8 @@ static bool get_scalar_int(YAMLParseContext* ctx, int* value) {
     if (!get_scalar_value(ctx, buffer, sizeof(buffer))) return false;
     
     char* endptr;
-    long long_val = strtol(buffer, &endptr, 10);
+    // Use base 0 to auto-detect decimal, octal (0), or hexadecimal (0x) format
+    long long_val = strtol(buffer, &endptr, 0);
     if (*endptr != '\0') {
         set_parse_error(ctx, "Invalid integer value");
         return false;
@@ -1102,9 +1216,8 @@ static bool get_scalar_long(YAMLParseContext* ctx, long* value) {
     if (!get_scalar_value(ctx, buffer, sizeof(buffer))) return false;
     
     char* endptr;
-    // Support hex values (0x48)
-    int base = (strncmp(buffer, "0x", 2) == 0 || strncmp(buffer, "0X", 2) == 0) ? 16 : 10;
-    *value = strtol(buffer, &endptr, base);
+    // Use base 0 to auto-detect decimal, octal (0), or hexadecimal (0x) format
+    *value = strtol(buffer, &endptr, 0);
     if (*endptr != '\0') {
         set_parse_error(ctx, "Invalid long value");
         return false;
@@ -1311,8 +1424,9 @@ bool config_yaml_map_to_channels(const YAMLAppConfig* config, Channel* channels)
         target_channel->slope = yaml_channel->slope;
         target_channel->offset = yaml_channel->offset;
         
-        // Copy pin number and filter alpha
+        // Copy pin number, board address, and filter alpha
         target_channel->pin = yaml_channel->pin;
+        target_channel->board_address = yaml_channel->board_address;
         target_channel->filter_alpha = yaml_channel->filter_alpha;
         
         // Set as active if it has a valid ID (not "NC" and not empty)

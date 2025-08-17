@@ -17,8 +17,8 @@ typedef struct {
 // Opaque HardwareManager structure
 typedef struct HardwareManager HardwareManager;
 
-// Initialize hardware subsystems using parameters
-HardwareManager* hardware_manager_init(const char* i2c_bus_path, long i2c_address);
+// Initialize hardware subsystems using parameters  
+HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addresses, int board_count);
                           
 // Initialize hardware subsystems using YAML configuration
 HardwareManager* hardware_manager_init_from_yaml(const YAMLAppConfig* config);                        

@@ -6,6 +6,8 @@
 #define GAIN_SETTING_SIZE 16
 #define UNIT_SIZE 16
 #define NUM_CHANNELS 4
+#define MAX_BOARDS 4
+#define MAX_TOTAL_CHANNELS (MAX_BOARDS * NUM_CHANNELS)
 
 // This struct will hold ALL information about a single sensor channel.
 typedef struct {
@@ -13,7 +15,8 @@ typedef struct {
     char id[MEASUREMENT_ID_SIZE];
     char unit[UNIT_SIZE];
     char gain_setting[GAIN_SETTING_SIZE];
-    int pin;  // ADC pin number (A0, A1, A2, A3)
+    int board_address;  // I2C address of the board (0x48-0x4B)
+    int pin;           // ADC pin on that board (0-3)
 
     // Calibration
     double slope;

@@ -16,16 +16,19 @@ metadata:
 
 hardware:
   i2c_bus: "/dev/i2c-3"
-  i2c_address: 0x48  # ADS1115 default address
   i2c_max_retries: 3        # Maximum I2C read retry attempts
   i2c_retry_delay_ms: 1     # Base retry delay (exponential backoff)
+  boards:
+    - address: 0x48
+      description: "Main battery monitoring board"
 
 system:
   main_loop_interval_ms: 100    # 10 Hz sampling rate
   data_send_interval_ms: 500    # 2 Hz transmission rate
 
 channels:
-  - pin: "A0"
+  - board_address: 0x48
+    pin: "A0"
     id: "corrente_bateria_principal"
     description: "Main battery current sensor - Hall effect"
     unit: "A"
@@ -45,7 +48,8 @@ channels:
       max_value: 120.0           # Absolute maximum valid value
       timeout_threshold_s: 5.0   # Alert if no new data for 5s
 
-  - pin: "A1"
+  - board_address: 0x48
+    pin: "A1"
     id: "tensao_bateria_principal"
     description: "Main battery voltage sensor - Voltage divider"
     unit: "V"
@@ -63,7 +67,8 @@ channels:
       min_value: 8.0             # Battery critically low
       max_value: 16.0            # Battery overcharge protection
 
-  - pin: "A2" 
+  - board_address: 0x48
+    pin: "A2" 
     id: "tensao_bateria_auxiliar"
     description: "Auxiliary battery voltage - 12V system"
     unit: "V"
@@ -81,7 +86,8 @@ channels:
       min_value: 8.0
       max_value: 16.0
 
-  - pin: "A3"
+  - board_address: 0x48
+    pin: "A3"
     id: "corrente_bateria_auxiliar"
     description: "Auxiliary battery current - System loads"
     unit: "A"

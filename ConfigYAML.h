@@ -13,12 +13,21 @@ typedef struct {
     char notes[256];
 } ConfigMetadata;
 
+// Board configuration for multi-board support
+typedef struct {
+    int address;        // I2C address (0x48-0x4B)
+    char description[64]; // Optional description
+} BoardConfig;
+
 // Hardware configuration
 typedef struct {
     char i2c_bus[64];
-    long i2c_address;
     int i2c_max_retries;     // Maximum I2C read retry attempts
     int i2c_retry_delay_ms;  // Base retry delay in milliseconds
+    
+    // Multi-board support
+    BoardConfig* boards;     // Array of board configurations
+    int board_count;         // Number of configured boards
 } HardwareConfig;
 
 // System timing configuration  

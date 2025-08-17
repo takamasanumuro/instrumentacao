@@ -41,7 +41,7 @@ struct ApplicationManager {
 };
 
 // --- Private Function Prototypes ---
-static void print_current_measurements(const Channel channels[], const GPSData* gps_data);
+static void print_measurements(const Channel channels[], const GPSData* gps_data);
 
 // --- Public API Implementation ---
 
@@ -160,7 +160,7 @@ AppManagerError app_manager_init(ApplicationManager* app) {
     battery_monitor_init_from_yaml(&app->battery_state, hardware_manager_get_channels(app->hardware_manager), app->yaml_config);
 
     printf("Application Manager initialized successfully with YAML config: %s\n", app->config_file_path);
-    printf("  - Hardware I2C: %s at 0x%02lx\n", app->yaml_config->hardware.i2c_bus, app->yaml_config->hardware.i2c_address);
+    // printf("  - Hardware I2C: %s at 0x%02lx\n", app->yaml_config->hardware.i2c_bus, app->yaml_config->hardware.i2c_address);
     printf("  - Channels configured: %zu\n", app->yaml_config->channel_count);
     printf("  - Main loop interval: %d ms\n", app->yaml_config->system.main_loop_interval_ms);
     printf("  - Data send interval: %d ms\n", app->yaml_config->system.data_send_interval_ms);
@@ -190,7 +190,7 @@ void app_manager_run(ApplicationManager* app) {
         hardware_manager_get_current_gps(app->hardware_manager, &gps_data);
         
         csv_logger_log(&app->csv_logger, channels, &gps_data);
-        print_current_measurements(channels, &gps_data);
+        print_measurements(channels, &gps_data);
         
         usleep(app->yaml_config->system.main_loop_interval_ms * 1000);
     }
@@ -250,13 +250,14 @@ const char* app_manager_error_string(AppManagerError error) {
 
 // --- Private Helper Functions ---
 
-static void print_current_measurements(const Channel channels[], const GPSData* gps_data) {
+static void print_measurements(const Channel channels[], const GPSData* gps_data) {
     // Simple placeholder. A more advanced implementation would format this nicely.
-    printf("--- Current Measurements ---\n");
-    for (int i = 0; i < NUM_CHANNELS; ++i) {
+    printf("--- Measurements ---\n");
+    for (int i = 0; i < MAX_TOTAL_CHANNELS; ++i) {
         if (channels[i].is_active) {
-            printf("  Channel %d (%s): ADC=%d, Value=%.4f %s\n",
-                   i,
+            printf("[Board 0x%02X] Channel %d (%s) : ADC=%d, Value=%.4f %s\n",
+                   channels[i].board_address,
+                   channels[i].pin,
                    channels[i].id,
                    channels[i].raw_adc_value,
                    channel_get_calibrated_value(&channels[i]),

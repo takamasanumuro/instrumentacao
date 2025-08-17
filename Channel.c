@@ -10,6 +10,7 @@ void channel_init(Channel* channel) {
     channel->offset = 0.0;
     channel->filter_alpha = 0.1; // Default alpha value
     channel->is_active = false;
+    channel->board_address = 0; // Default board address
     channel->pin = -1; // Initialize to invalid pin
     strcpy(channel->id, "NC"); // Default to "Not Connected"
 }
