@@ -15,6 +15,10 @@ struct HardwareManager {
     bool gps_connected;
     char i2c_bus_path[256];
     
+    // GPS state management
+    GPSData last_valid_gps;     // Last known valid GPS data
+    bool has_valid_gps;         // Whether we ever received valid GPS data
+    
     // Multi-board I2C management
     int board_handles[MAX_BOARDS];     // I2C handles for each board
     int board_addresses[MAX_BOARDS];   // I2C addresses for each board
@@ -44,6 +48,13 @@ HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addr
 
     strncpy(hw_manager->i2c_bus_path, i2c_bus_path, sizeof(hw_manager->i2c_bus_path) - 1);
     hw_manager->i2c_bus_path[sizeof(hw_manager->i2c_bus_path) - 1] = '\0';
+    
+    // Initialize GPS state
+    hw_manager->has_valid_gps = false;
+    hw_manager->last_valid_gps.latitude = NAN;
+    hw_manager->last_valid_gps.longitude = NAN;
+    hw_manager->last_valid_gps.altitude = NAN;
+    hw_manager->last_valid_gps.speed = NAN;
     
     // Set default I2C retry parameters
     hw_manager->i2c_max_retries = 3;
@@ -264,6 +275,11 @@ bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_
     }
 
     if (!hw_manager->gps_connected) {
+        // Return last valid GPS data if available, even when not connected
+        if (hw_manager->has_valid_gps) {
+            *gps_data = hw_manager->last_valid_gps;
+            return true;
+        }
         return false;
     }
 
@@ -271,11 +287,20 @@ bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_
     if (gps_waiting(&hw_manager->gps_data, 1000)) {  // 1 millisecond timeout
         if (gps_read(&hw_manager->gps_data, NULL, 0) == -1) {
             fprintf(stderr, "Hardware: GPS read error\n");
+            // Return last valid GPS data on read error
+            if (hw_manager->has_valid_gps) {
+                *gps_data = hw_manager->last_valid_gps;
+                return true;
+            }
             return false;
         }
 
         if (MODE_SET != (MODE_SET & hw_manager->gps_data.set)) {
-            // Did not get GPS mode information yet
+            // Did not get GPS mode information yet - return last valid data
+            if (hw_manager->has_valid_gps) {
+                *gps_data = hw_manager->last_valid_gps;
+                return true;
+            }
             return false;
         }
 
@@ -284,12 +309,24 @@ bool hardware_manager_get_current_gps(HardwareManager* hw_manager, GPSData* gps_
             isfinite(hw_manager->gps_data.fix.longitude) &&
             isfinite(hw_manager->gps_data.fix.altHAE) &&
             isfinite(hw_manager->gps_data.fix.speed)) {
-                gps_data->latitude = hw_manager->gps_data.fix.latitude;
-                gps_data->longitude = hw_manager->gps_data.fix.longitude;
-                gps_data->altitude = hw_manager->gps_data.fix.altHAE;
-                gps_data->speed = hw_manager->gps_data.fix.speed;
+            
+            // Store new valid GPS data
+            hw_manager->last_valid_gps.latitude = hw_manager->gps_data.fix.latitude;
+            hw_manager->last_valid_gps.longitude = hw_manager->gps_data.fix.longitude;
+            hw_manager->last_valid_gps.altitude = hw_manager->gps_data.fix.altHAE;
+            hw_manager->last_valid_gps.speed = hw_manager->gps_data.fix.speed;
+            hw_manager->has_valid_gps = true;
+            
+            // Return the new valid data
+            *gps_data = hw_manager->last_valid_gps;
             return true;
         }
+    }
+
+    // No new data available - return last valid GPS data if we have it
+    if (hw_manager->has_valid_gps) {
+        *gps_data = hw_manager->last_valid_gps;
+        return true;
     }
 
     return false;
