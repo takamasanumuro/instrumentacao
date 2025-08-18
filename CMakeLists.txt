@@ -19,6 +19,7 @@ set(SOURCES
     HardwareManager.c
     ApplicationManager.c
     ConfigYAML.c
+    DisplayManager.c
     main.c
 )
 
@@ -33,9 +34,41 @@ find_package(ZLIB REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(YAML REQUIRED yaml-0.1)
 
+# Find ncurses library (optional)
+find_package(Curses QUIET)
+if(CURSES_FOUND)
+    message(STATUS "Found ncurses: ${CURSES_LIBRARIES}")
+    add_definitions(-DHAVE_NCURSES)
+else()
+    message(STATUS "ncurses not found - DisplayManager will use fallback mode")
+endif()
+
 #Add the executable to the build
 add_executable(instrumentation ${SOURCES})
-target_link_libraries(instrumentation PRIVATE CURL::libcurl Threads::Threads gps ZLIB::ZLIB ${YAML_LIBRARIES} pthread m)
+
+# Link libraries - include ncurses if available
+if(CURSES_FOUND)
+    target_link_libraries(instrumentation PRIVATE 
+        CURL::libcurl 
+        Threads::Threads 
+        gps 
+        ZLIB::ZLIB 
+        ${YAML_LIBRARIES} 
+        ${CURSES_LIBRARIES}
+        pthread 
+        m)
+    target_include_directories(instrumentation PRIVATE ${CURSES_INCLUDE_DIR})
+else()
+    target_link_libraries(instrumentation PRIVATE 
+        CURL::libcurl 
+        Threads::Threads 
+        gps 
+        ZLIB::ZLIB 
+        ${YAML_LIBRARIES} 
+        pthread 
+        m)
+endif()
+
 target_include_directories(instrumentation PRIVATE ${YAML_INCLUDE_DIRS})
 target_compile_options(instrumentation PRIVATE ${YAML_CFLAGS_OTHER})
 

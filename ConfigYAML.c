@@ -529,10 +529,6 @@ static bool parse_mapping(YAMLParseContext* ctx) {
         key[sizeof(key) - 1] = '\0';
         yaml_event_delete(&ctx->event);
         
-#ifdef DEBUG
-        fprintf(stderr, "DEBUG: Parsing section: '%s'\n", key);
-#endif
-        
         // Parse the value based on the key
         if (strcmp(key, "metadata") == 0) {
             if (!parse_metadata_section(ctx)) return false;
@@ -1174,19 +1170,6 @@ static bool get_scalar_value(YAMLParseContext* ctx, char* buffer, size_t buffer_
         set_parse_error(ctx, "Failed to parse scalar value");
         return false;
     }
-    
-#ifdef DEBUG
-    const char* event_names[] = {
-        "NONE", "STREAM_START", "STREAM_END", "DOCUMENT_START", "DOCUMENT_END",
-        "ALIAS", "SCALAR", "SEQUENCE_START", "SEQUENCE_END", "MAPPING_START", "MAPPING_END"
-    };
-    if (ctx->event.type < sizeof(event_names)/sizeof(event_names[0])) {
-        fprintf(stderr, "DEBUG: get_scalar_value got event: %s\n", event_names[ctx->event.type]);
-    }
-    if (ctx->event.type == YAML_SCALAR_EVENT) {
-        fprintf(stderr, "DEBUG: scalar value: '%s'\n", (char*)ctx->event.data.scalar.value);
-    }
-#endif
     
     if (ctx->event.type != YAML_SCALAR_EVENT) {
         set_parse_error(ctx, "Expected scalar value");

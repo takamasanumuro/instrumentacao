@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include "ConfigYAML.h"
+#include "DisplayManager.h"
 
 // Application constants
 #define APP_CONFIG_FILE_PATH_MAX 256

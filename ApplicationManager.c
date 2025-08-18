@@ -6,6 +6,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <math.h>
+#include <time.h>
 
 // All required headers from the original main.c
 #include "ADS1115.h"
@@ -15,6 +16,7 @@
 #include "ConfigYAML.h"
 #include "CsvLogger.h"
 #include "Channel.h"
+#include "DisplayManager.h"
 #include "Sender.h"
 #include "SocketServer.h"
 #include "util.h"
@@ -37,11 +39,13 @@ struct ApplicationManager {
     
     HardwareManager* hardware_manager;
     DataPublisher* data_publisher;
+    DisplayManager* display_manager;
     IntervalTimer send_timer;
+    time_t start_time;
 };
 
 // --- Private Function Prototypes ---
-static void print_measurements(const Channel channels[], const GPSData* gps_data);
+// print_measurements function removed - now using DisplayManager
 
 // --- Public API Implementation ---
 
@@ -94,10 +98,30 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         return APP_ERROR_CONFIG_LOAD_FAILED;
     }
     
+    // Initialize display manager first
+    app->display_manager = display_manager_init();
+    if (!app->display_manager) {
+        fprintf(stderr, "Display manager initialization failed\n");
+        config_yaml_free(app->yaml_config);
+        app->yaml_config = NULL;
+        return APP_ERROR_HARDWARE_INIT_FAILED;
+    }
+    
+    // Set configuration name for display
+    const char* config_filename = strrchr(app->config_file_path, '/');
+    if (!config_filename) config_filename = strrchr(app->config_file_path, '\\');
+    if (!config_filename) config_filename = app->config_file_path;
+    else config_filename++; // Skip the slash
+    display_manager_set_config_name(app->display_manager, config_filename);
+    
+    // Record start time
+    app->start_time = time(NULL);
+    
     // Initialize hardware using YAML configuration
     app->hardware_manager = hardware_manager_init_from_yaml(app->yaml_config);
     if (!app->hardware_manager) {
-        fprintf(stderr, "Hardware manager initialization failed\n");
+        display_manager_add_message(app->display_manager, MSG_ERROR, "Hardware manager initialization failed");
+        display_manager_cleanup(app->display_manager);
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
         return APP_ERROR_HARDWARE_INIT_FAILED;
@@ -105,7 +129,8 @@ AppManagerError app_manager_init(ApplicationManager* app) {
 
     // Initialize channels in HardwareManager
     if (!hardware_manager_init_channels(app->hardware_manager, app->yaml_config)) {
-        fprintf(stderr, "Failed to initialize channels in hardware manager\n");
+        display_manager_add_message(app->display_manager, MSG_ERROR, "Failed to initialize channels in hardware manager");
+        display_manager_cleanup(app->display_manager);
         config_yaml_free(app->yaml_config);
         app->yaml_config = NULL;
         hardware_manager_cleanup(app->hardware_manager);
@@ -159,11 +184,10 @@ AppManagerError app_manager_init(ApplicationManager* app) {
     // Initialize battery monitor with YAML configuration
     battery_monitor_init_from_yaml(&app->battery_state, hardware_manager_get_channels(app->hardware_manager), app->yaml_config);
 
-    printf("Application Manager initialized successfully with YAML config: %s\n", app->config_file_path);
-    // printf("  - Hardware I2C: %s at 0x%02lx\n", app->yaml_config->hardware.i2c_bus, app->yaml_config->hardware.i2c_address);
-    printf("  - Channels configured: %zu\n", app->yaml_config->channel_count);
-    printf("  - Main loop interval: %d ms\n", app->yaml_config->system.main_loop_interval_ms);
-    printf("  - Data send interval: %d ms\n", app->yaml_config->system.data_send_interval_ms);
+    display_manager_add_message(app->display_manager, MSG_INFO, "Application Manager initialized successfully with config: %s", config_filename);
+    display_manager_add_message(app->display_manager, MSG_INFO, "Channels configured: %zu", app->yaml_config->channel_count);
+    display_manager_add_message(app->display_manager, MSG_INFO, "Main loop interval: %d ms", app->yaml_config->system.main_loop_interval_ms);
+    display_manager_add_message(app->display_manager, MSG_INFO, "Data send interval: %d ms", app->yaml_config->system.data_send_interval_ms);
     return APP_SUCCESS;
 }
 
@@ -190,7 +214,23 @@ void app_manager_run(ApplicationManager* app) {
         hardware_manager_get_current_gps(app->hardware_manager, &gps_data);
         
         csv_logger_log(&app->csv_logger, channels, &gps_data);
-        print_measurements(channels, &gps_data);
+        
+        // Update display with measurements
+        int channel_count = hardware_manager_get_channel_count(app->hardware_manager);
+        display_manager_update_measurements(app->display_manager, channels, channel_count, &gps_data);
+        
+        // Update system status
+        SystemStatus status = {
+            .active_boards = app->yaml_config->hardware.board_count,
+            .total_boards = app->yaml_config->hardware.board_count,
+            .loop_frequency_hz = 1000.0 / app->yaml_config->system.main_loop_interval_ms,
+            .send_frequency_hz = 1000.0 / app->yaml_config->system.data_send_interval_ms,
+            .uptime_seconds = (int)(time(NULL) - app->start_time),
+            .gps_connected = hardware_manager_is_gps_available(app->hardware_manager),
+            .influxdb_connected = true  // Assume connected for now
+        };
+        display_manager_update_status(app->display_manager, &status);
+        display_manager_refresh(app->display_manager);
         
         usleep(app->yaml_config->system.main_loop_interval_ms * 1000);
     }
@@ -199,13 +239,22 @@ void app_manager_run(ApplicationManager* app) {
 void app_manager_destroy(ApplicationManager* app) {
     if (!app) return;
 
-    printf("\nCleaning up resources...\n");
+    if (app->display_manager) {
+        display_manager_add_message(app->display_manager, MSG_INFO, "Cleaning up resources...");
+        display_manager_refresh(app->display_manager);
+    }
     
     data_publisher_destroy(app->data_publisher);
     hardware_manager_cleanup(app->hardware_manager);
     sender_destroy(app->sender_ctx);
     csv_logger_close(&app->csv_logger);
     pthread_mutex_destroy(&app->cal_mutex);
+    
+    // Cleanup display manager last
+    if (app->display_manager) {
+        display_manager_cleanup(app->display_manager);
+        app->display_manager = NULL;
+    }
     
     // Clean up YAML configuration
     if (app->yaml_config) {
@@ -250,27 +299,4 @@ const char* app_manager_error_string(AppManagerError error) {
 
 // --- Private Helper Functions ---
 
-static void print_measurements(const Channel channels[], const GPSData* gps_data) {
-    // Simple placeholder. A more advanced implementation would format this nicely.
-    printf("--- Measurements ---\n");
-    for (int i = 0; i < MAX_TOTAL_CHANNELS; ++i) {
-        if (channels[i].is_active) {
-            printf("[Board 0x%02X] Channel %d (%s) : ADC=%d, Value=%.4f %s\n",
-                   channels[i].board_address,
-                   channels[i].pin,
-                   channels[i].id,
-                   channels[i].raw_adc_value,
-                   channel_get_calibrated_value(&channels[i]),
-                   channels[i].unit);
-        }
-    }
-    if (!isnan(gps_data->latitude) && !isnan(gps_data->longitude)) {
-        printf("  GPS: Lat=%.6f, Lon=%.6f, Speed=%.2f kph\n",
-               gps_data->latitude,
-               gps_data->longitude,
-               gps_data->speed);
-    } else {
-        printf("  GPS: No valid data\n");
-    }
-    printf("--------------------------\n");
-}
+// print_measurements function removed - now using DisplayManager
