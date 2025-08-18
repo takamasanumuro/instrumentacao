@@ -580,37 +580,37 @@ static bool parse_metadata_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    ConfigMetadata* metadata = &ctx->config->metadata;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         // Extract key from current event
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "version") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->metadata.version, 
-                                sizeof(ctx->config->metadata.version))) return false;
+            if (!get_scalar_value(ctx, metadata->version, sizeof(metadata->version))) return false;
         } else if (strcmp(key, "calibration_date") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->metadata.calibration_date,
-                                sizeof(ctx->config->metadata.calibration_date))) return false;
+            if (!get_scalar_value(ctx, metadata->calibration_date, sizeof(metadata->calibration_date))) return false;
         } else if (strcmp(key, "calibrated_by") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->metadata.calibrated_by,
-                                sizeof(ctx->config->metadata.calibrated_by))) return false;
+            if (!get_scalar_value(ctx, metadata->calibrated_by, sizeof(metadata->calibrated_by))) return false;
         } else if (strcmp(key, "description") == 0 || strcmp(key, "notes") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->metadata.notes,
-                                sizeof(ctx->config->metadata.notes))) return false;
+            if (!get_scalar_value(ctx, metadata->notes, sizeof(metadata->notes))) return false;
         } else {
             // Skip unknown metadata fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -624,7 +624,6 @@ static bool parse_hardware_section(YAMLParseContext* ctx) {
     yaml_parser_t* parser = &ctx->parser;
     yaml_event_t* event = &ctx->event;
     HardwareConfig* hw_config = &ctx->config->hardware;
-    
     while (true) {
         if (!yaml_parser_parse(parser, event)) return false;
 
@@ -661,28 +660,32 @@ static bool parse_system_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    SystemConfig* system = &ctx->config->system;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
 
         if (strcmp(key, "main_loop_interval_ms") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->system.main_loop_interval_ms)) return false;
+            if (!get_scalar_int(ctx, &system->main_loop_interval_ms)) return false;
         } else if (strcmp(key, "data_send_interval_ms") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->system.data_send_interval_ms)) return false;
+            if (!get_scalar_int(ctx, &system->data_send_interval_ms)) return false;
         } else {
             // Skip unknown system fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -818,19 +821,22 @@ static bool parse_calibration_section(YAMLParseContext* ctx, Channel* channel) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "slope") == 0) {
             if (!get_scalar_double(ctx, &channel->slope)) return false;
@@ -838,8 +844,8 @@ static bool parse_calibration_section(YAMLParseContext* ctx, Channel* channel) {
             if (!get_scalar_double(ctx, &channel->offset)) return false;
         } else {
             // Skip other calibration fields (r_squared, calibration_points, etc.)
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -850,29 +856,31 @@ static bool parse_adc_section(YAMLParseContext* ctx, Channel* channel) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "gain") == 0) {
-            if (!get_scalar_value(ctx, channel->gain_setting, 
-                                sizeof(channel->gain_setting))) return false;
+            if (!get_scalar_value(ctx, channel->gain_setting, sizeof(channel->gain_setting))) return false;
         } else if (strcmp(key, "filter_alpha") == 0) {
             if (!get_scalar_double(ctx, &channel->filter_alpha)) return false;
         } else {
             // Skip other ADC fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -883,24 +891,27 @@ static bool parse_validation_section(YAMLParseContext* ctx, Channel* channel) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         // Validation fields not currently stored in Channel struct
         // Skip all validation fields for now
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-        yaml_event_delete(&ctx->event);
+        if (!yaml_parser_parse(parser, event)) return false;
+        yaml_event_delete(event);
     }
     
     return true;
@@ -910,40 +921,40 @@ static bool parse_influxdb_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    InfluxDBConfig* influxdb = &ctx->config->influxdb;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "url") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->influxdb.url,
-                                sizeof(ctx->config->influxdb.url))) return false;
+            if (!get_scalar_value(ctx, influxdb->url, sizeof(influxdb->url))) return false;
         } else if (strcmp(key, "bucket") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->influxdb.bucket,
-                                sizeof(ctx->config->influxdb.bucket))) return false;
+            if (!get_scalar_value(ctx, influxdb->bucket, sizeof(influxdb->bucket))) return false;
         } else if (strcmp(key, "org") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->influxdb.org,
-                                sizeof(ctx->config->influxdb.org))) return false;
+            if (!get_scalar_value(ctx, influxdb->org, sizeof(influxdb->org))) return false;
         } else if (strcmp(key, "token") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->influxdb.token,
-                                sizeof(ctx->config->influxdb.token))) return false;
+            if (!get_scalar_value(ctx, influxdb->token, sizeof(influxdb->token))) return false;
         } else {
             // Skip other InfluxDB fields (measurement, tags, etc.)
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            if (ctx->event.type == YAML_MAPPING_START_EVENT) {
-                yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            if (event->type == YAML_MAPPING_START_EVENT) {
+                yaml_event_delete(event);
                 if (!skip_mapping(ctx)) return false;
             } else {
-                yaml_event_delete(&ctx->event);
+                yaml_event_delete(event);
             }
         }
     }
@@ -955,29 +966,32 @@ static bool parse_logging_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    LoggingConfig* logging = &ctx->config->logging;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "csv_enabled") == 0) {
-            if (!get_scalar_bool(ctx, &ctx->config->logging.csv_enabled)) return false;
+            if (!get_scalar_bool(ctx, &logging->csv_enabled)) return false;
         } else if (strcmp(key, "csv_directory") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->logging.csv_directory,
-                                sizeof(ctx->config->logging.csv_directory))) return false;
+            if (!get_scalar_value(ctx, logging->csv_directory, sizeof(logging->csv_directory))) return false;
         } else {
             // Skip other logging fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -988,31 +1002,34 @@ static bool parse_battery_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    BatteryConfig* battery = &ctx->config->battery;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "coulomb_counting_enabled") == 0) {
-            if (!get_scalar_bool(ctx, &ctx->config->battery.coulomb_counting_enabled)) return false;
+            if (!get_scalar_bool(ctx, &battery->coulomb_counting_enabled)) return false;
         } else if (strcmp(key, "capacity_ah") == 0) {
-            if (!get_scalar_double(ctx, &ctx->config->battery.capacity_ah)) return false;
+            if (!get_scalar_double(ctx, &battery->capacity_ah)) return false;
         } else if (strcmp(key, "current_channel_id") == 0) {
-            if (!get_scalar_value(ctx, ctx->config->battery.current_channel_id,
-                                sizeof(ctx->config->battery.current_channel_id))) return false;
+            if (!get_scalar_value(ctx, battery->current_channel_id, sizeof(battery->current_channel_id))) return false;
         } else {
             // Skip other battery fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
@@ -1029,30 +1046,34 @@ static bool parse_network_section(YAMLParseContext* ctx) {
     if (!expect_event_type(ctx, YAML_MAPPING_START_EVENT)) return false;
     
     char key[256];
+    yaml_parser_t* parser = &ctx->parser;
+    yaml_event_t* event = &ctx->event;
+    NetworkConfig* network = &ctx->config->network;
+    
     while (true) {
-        if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
+        if (!yaml_parser_parse(parser, event)) return false;
         
-        if (ctx->event.type == YAML_MAPPING_END_EVENT) {
-            yaml_event_delete(&ctx->event);
+        if (event->type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(event);
             break;
         }
         
         if (!get_current_scalar_key(ctx, key, sizeof(key))) {
-            yaml_event_delete(&ctx->event);
+            yaml_event_delete(event);
             return false;
         }
-        yaml_event_delete(&ctx->event);
+        yaml_event_delete(event);
         
         if (strcmp(key, "socket_server_enabled") == 0) {
-            if (!get_scalar_bool(ctx, &ctx->config->network.socket_server_enabled)) return false;
+            if (!get_scalar_bool(ctx, &network->socket_server_enabled)) return false;
         } else if (strcmp(key, "socket_port") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->network.socket_port)) return false;
+            if (!get_scalar_int(ctx, &network->socket_port)) return false;
         } else if (strcmp(key, "update_interval_ms") == 0) {
-            if (!get_scalar_int(ctx, &ctx->config->network.update_interval_ms)) return false;
+            if (!get_scalar_int(ctx, &network->update_interval_ms)) return false;
         } else {
             // Skip unknown network fields
-            if (!yaml_parser_parse(&ctx->parser, &ctx->event)) return false;
-            yaml_event_delete(&ctx->event);
+            if (!yaml_parser_parse(parser, event)) return false;
+            yaml_event_delete(event);
         }
     }
     
