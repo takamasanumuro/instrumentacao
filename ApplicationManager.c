@@ -175,6 +175,10 @@ AppManagerError app_manager_init(ApplicationManager* app) {
         hardware_manager_cleanup(app->hardware_manager);
         return APP_ERROR_PUBLISHER_INIT_FAILED;
     }
+
+    // Initialize socket server
+    SocketServerContext* socket_server = socket_server_create(app->hardware_manager, app->yaml_config);
+    socket_server_start(socket_server);
     
     // Transmission interval for sending networked data
     double send_interval_s = app->yaml_config->system.data_send_interval_ms / 1000.0;
