@@ -14,8 +14,12 @@ metadata:
     Calibration required before use.
 
 hardware:
-  i2c_bus: "/dev/i2c-1"
-  i2c_address: 0x48
+  i2c_bus: "/dev/i2c-3"
+  i2c_max_retries: 3        # Maximum I2C read retry attempts
+  i2c_retry_delay_ms: 1     # Base retry delay (exponential backoff)
+  boards:
+    - address: 0x48
+      description: "Main battery monitoring board"
 
 system:
   main_loop_interval_ms: 100
@@ -35,7 +39,7 @@ channels:
       range_max: 0.0
     adc:
       gain: "GAIN_4096MV"
-      filter_alpha: 0.1
+      filter_alpha: 0.9
     validation:
       min_value: -1000.0
       max_value: 1000.0
@@ -53,7 +57,7 @@ channels:
       range_max: 0.0
     adc:
       gain: "GAIN_4096MV"
-      filter_alpha: 0.1
+      filter_alpha: 0.9
     validation:
       min_value: -1000.0
       max_value: 1000.0
@@ -71,7 +75,7 @@ channels:
       range_max: 0.0
     adc:
       gain: "GAIN_4096MV"
-      filter_alpha: 0.1
+      filter_alpha: 0.9
     validation:
       min_value: -1000.0
       max_value: 1000.0
@@ -89,7 +93,7 @@ channels:
       range_max: 0.0
     adc:
       gain: "GAIN_4096MV"
-      filter_alpha: 0.1
+      filter_alpha: 0.9
     validation:
       min_value: -1000.0
       max_value: 1000.0

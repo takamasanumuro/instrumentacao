@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADS1115 I2C Process</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for transitions and layout */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* SLOWED DOWN: Changed transition from 0.5s to 1.0s */
+        .packet, #explanation {
+            transition: all 1.0s ease-in-out;
+        }
+        /* Tooltip styles */
+        [data-tooltip] {
+            position: relative;
+            cursor: help;
+        }
+        [data-tooltip]:before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 12px;
+            background-color: #000;
+            color: #fff;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s, visibility 0.3s;
+            z-index: 10;
+        }
+        [data-tooltip]:hover:before {
+            opacity: 1;
+            visibility: visible;
+        }
+        /* Style for bit groups in the table */
+        .bit-os { color: #f87171; } /* red-400 */
+        .bit-mux { color: #60a5fa; } /* blue-400 */
+        .bit-pga { color: #34d399; } /* green-400 */
+        .bit-mode { color: #f472b6; } /* pink-400 */
+        .bit-rate { color: #fde047; } /* yellow-300 */
+        .bit-comp { color: #a78bfa; } /* violet-400 */
+
+        /* Style for the byte cells */
+        .reg-byte-cell {
+            text-align: center;
+            width: 60px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <h1 class="text-3xl md:text-4xl font-bold text-center mb-8 text-blue-300">Interactive ADS1115 I²C Diagram</h1>
+        
+        <!-- Simulation Controls -->
+        <div class="bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700 mb-8">
+            <h2 class="text-2xl font-bold text-teal-300 mb-4 border-b border-teal-700 pb-2">Simulation Controls</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- PGA/Full Scale Range Select -->
+                <div>
+                    <label for="pga-select" class="block text-sm font-medium text-gray-300 mb-2">Full Scale Range (PGA)</label>
+                    <select id="pga-select" class="bg-gray-900 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                        <option value="000" data-range="6.144">±6.144V</option>
+                        <option value="001" data-range="4.096">±4.096V</option>
+                        <option value="010" data-range="2.048" selected>±2.048V</option>
+                        <option value="011" data-range="1.024">±1.024V</option>
+                        <option value="100" data-range="0.512">±0.512V</option>
+                        <option value="101" data-range="0.256">±0.256V</option>
+                    </select>
+                </div>
+                <!-- Voltage Slider -->
+                <div>
+                    <label for="voltage-slider" class="block text-sm font-medium text-gray-300 mb-2">Input Voltage (AIN0)</label>
+                    <div class="flex items-center space-x-4">
+                        <input id="voltage-slider" type="range" min="0" max="3.3" value="1.0" step="0.001" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        <span id="voltage-display" class="font-mono text-lg text-cyan-300 w-24 text-right">1.000 V</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Diagram Area -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-stretch gap-4">
+            
+            <!-- Master (Microcontroller) -->
+            <div class="w-full md:w-2/5 bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
+                <h2 class="text-2xl font-bold text-cyan-400 mb-4 border-b border-cyan-700 pb-2">Master (MCU)</h2>
+                <div id="master-state" class="bg-gray-900 rounded-lg p-4 font-mono text-sm h-24">
+                    <span class="text-gray-400">// State:</span>
+                    <div id="master-state-text">Idle</div>
+                </div>
+            </div>
+
+            <!-- Bus Lane -->
+            <div class="w-full md:w-1/5 flex flex-col justify-around min-h-[200px] md:min-h-0">
+                <div class="text-center text-gray-500 text-sm mb-2">I²C Bus</div>
+                <!-- Master to Slave Packet -->
+                <div id="packet-to-slave" class="packet opacity-0 bg-green-500 text-black p-3 rounded-lg shadow-lg font-mono text-xs md:text-sm break-words mb-4">
+                    &nbsp;
+                </div>
+                <!-- Arrow -->
+                <div class="text-green-500 text-4xl font-bold text-center hidden md:block">&darr;</div>
+                <div class="text-green-500 text-4xl font-bold text-center md:hidden">&rarr;</div>
+                <!-- Slave to Master Packet -->
+                <div id="packet-to-master" class="packet opacity-0 bg-yellow-400 text-black p-3 rounded-lg shadow-lg font-mono text-xs md:text-sm break-words mt-4">
+                    &nbsp;
+                </div>
+                <!-- Arrow -->
+                <div class="text-yellow-400 text-4xl font-bold text-center transform rotate-180 hidden md:block">&darr;</div>
+                <div class="text-yellow-400 text-4xl font-bold text-center transform rotate-180 md:hidden">&rarr;</div>
+            </div>
+
+            <!-- Slave (ADS1115) -->
+            <div class="w-full md:w-2/5 bg-gray-800 rounded-lg shadow-xl p-6 border border-gray-700">
+                <h2 class="text-2xl font-bold text-purple-400 mb-4 border-b border-purple-700 pb-2">Slave (ADS1115)</h2>
+                
+                <!-- Updated Memory Table -->
+                <div class="bg-gray-900 rounded-lg p-2 font-mono text-sm overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="text-xs text-gray-400 uppercase">
+                            <tr>
+                                <th class="px-2 py-2">Addr</th>
+                                <th class="px-2 py-2">Register</th>
+                                <th class="px-2 py-2 text-center">Value (MSB)</th>
+                                <th class="px-2 py-2 text-center">Value (LSB)</th>
+                                <th class="px-2 py-2">Bit Breakdown / Description</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <!-- Conversion Register -->
+                            <tr class="align-top">
+                                <td class="px-2 py-3">0x00</td>
+                                <td class="px-2 py-3">Conversion</td>
+                                <td id="reg-val-conv-msb" class="px-2 py-3 reg-byte-cell">0x00</td>
+                                <td id="reg-val-conv-lsb" class="px-2 py-3 reg-byte-cell">0x00</td>
+                                <td id="reg-desc-conv" class="px-2 py-3 text-xs text-gray-400">Decimal: <strong class="text-white">0</strong><br><span class="text-xs text-gray-400">16-bit 2's complement result</span></td>
+                            </tr>
+                            <!-- Config Register -->
+                            <tr class="align-top">
+                                <td class="px-2 py-3">0x01</td>
+                                <td class="px-2 py-3">Config</td>
+                                <td id="reg-val-config-msb" class="px-2 py-3 reg-byte-cell">0x85</td>
+                                <td id="reg-val-config-lsb" class="px-2 py-3 reg-byte-cell">0x83</td>
+                                <td id="reg-desc-config" class="px-2 py-3 text-xs leading-relaxed">
+                                    <!-- This content will be generated by JS -->
+                                </td>
+                            </tr>
+                            <!-- Lo_thresh Register -->
+                            <tr class="align-top">
+                                <td class="px-2 py-3">0x02</td>
+                                <td class="px-2 py-3">Lo_thresh</td>
+                                <td id="reg-val-lo-msb" class="px-2 py-3 reg-byte-cell">0x80</td>
+                                <td id="reg-val-lo-lsb" class="px-2 py-3 reg-byte-cell">0x00</td>
+                                <td id="reg-desc-lo" class="px-2 py-3 text-xs text-gray-400">Comparator low threshold</td>
+                            </tr>
+                            <!-- Hi_thresh Register -->
+                            <tr class="align-top">
+                                <td class="px-2 py-3">0x03</td>
+                                <td class="px-2 py-3">Hi_thresh</td>
+                                <td id="reg-val-hi-msb" class="px-2 py-3 reg-byte-cell">0x7F</td>
+                                <td id="reg-val-hi-lsb" class="px-2 py-3 reg-byte-cell">0xFF</td>
+                                <td id="reg-desc-hi" class="px-2 py-3 text-xs text-gray-400">Comparator high threshold</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Explanation Panel -->
+        <div id="explanation" class="mt-8 bg-gray-800 border border-gray-700 rounded-lg p-6 text-lg min-h-[100px]">
+            Welcome! Click "Start" to begin the I²C communication sequence for reading the ADC.
+        </div>
+
+        <!-- Controls -->
+        <div class="mt-8 text-center space-x-4">
+            <button id="next-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-400">
+                Start
+            </button>
+            <button id="ready-btn" class="hidden bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-6 rounded-lg transition-all shadow-lg focus:outline-none focus:ring-2 focus:ring-gray-400">
+                Simulate Conversion Ready
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- Element References ---
+        const nextBtn = document.getElementById('next-btn');
+        const readyBtn = document.getElementById('ready-btn');
+        const explanation = document.getElementById('explanation');
+        
+        const toSlavePacket = document.getElementById('packet-to-slave');
+        const toMasterPacket = document.getElementById('packet-to-master');
+        
+        const masterState = document.getElementById('master-state-text');
+        
+        // Memory Table DOM References
+        const regValConvMsb = document.getElementById('reg-val-conv-msb');
+        const regValConvLsb = document.getElementById('reg-val-conv-lsb');
+        const regDescConv = document.getElementById('reg-desc-conv');
+        const regValConfigMsb = document.getElementById('reg-val-config-msb');
+        const regValConfigLsb = document.getElementById('reg-val-config-lsb');
+        const regDescConfig = document.getElementById('reg-desc-config');
+        const regValLoMsb = document.getElementById('reg-val-lo-msb');
+        const regValLoLsb = document.getElementById('reg-val-lo-lsb');
+        const regValHiMsb = document.getElementById('reg-val-hi-msb');
+        const regValHiLsb = document.getElementById('reg-val-hi-lsb');
+        
+        // Simulation Controls
+        const pgaSelect = document.getElementById('pga-select');
+        const voltageSlider = document.getElementById('voltage-slider');
+        const voltageDisplay = document.getElementById('voltage-display');
+
+        // --- State ---
+        let currentStep = 0;
+        
+        // Example ADC parameters
+        const MUX = '100'; // AIN0 vs GND
+        const RATE = '100'; // 128 SPS
+        
+        // Dynamic State
+        let currentPgaBits = '010';
+        let currentPgaRange = 2.048;
+        let currentVoltage = 1.0;
+        let resultMSB = "0x00";
+        let resultLSB = "0x00";
+
+        // Register state variables
+        let regConvValue = 0x0000;
+        let regConfigValue = 0x8583; // Default
+        let regLoThreshValue = 0x8000; // Default
+        let regHiThreshValue = 0x7FFF; // Default
+        
+        // --- Bit Description Maps ---
+        const MUX_MAP = {
+            '000': 'AIN0/AIN1', '001': 'AIN0/AIN3', '010': 'AIN1/AIN3', '011': 'AIN2/AIN3',
+            '100': 'AIN0/GND',  '101': 'AIN1/GND',  '110': 'AIN2/GND',  '111': 'AIN3/GND'
+        };
+        const PGA_MAP = {
+            '000': '±6.144V', '001': '±4.096V', '010': '±2.048V', '011': '±1.024V',
+            '100': '±0.512V', '101': '±0.256V', '110': '±0.256V', '111': '±0.256V'
+        };
+        const RATE_MAP = {
+            '000': '8 SPS', '001': '16 SPS', '010': '32 SPS', '011': '64 SPS',
+            '100': '128 SPS', '101': '250 SPS', '110': '475 SPS', '111': '860 SPS'
+        };
+
+        // --- Utility Functions ---
+
+        // Helper to format a byte as a hex string
+        function toHexByte(value) {
+            return '0x' + (value & 0xFF).toString(16).toUpperCase().padStart(2, '0');
+        }
+
+        function calculateADCValue() {
+            let voltage = currentVoltage;
+            const pgaRange = currentPgaRange;
+            
+            if (voltage > pgaRange) {
+                voltage = pgaRange;
+            }
+            
+            let decimalValue = Math.round((voltage / pgaRange) * 32767);
+
+            if (decimalValue < 0) {
+                decimalValue = 65536 + decimalValue;
+            }
+            
+            if (decimalValue > 32767) {
+                decimalValue = 32767;
+            }
+
+            regConvValue = decimalValue;
+            
+            let hexValue = decimalValue.toString(16).toUpperCase().padStart(4, '0');
+            resultMSB = "0x" + hexValue.substring(0, 2);
+            resultLSB = "0x" + hexValue.substring(2, 4);
+        }
+
+        function updateMemoryTable() {
+            // Update hex values for all registers
+            regValConvMsb.innerText = toHexByte(regConvValue >> 8);
+            regValConvLsb.innerText = toHexByte(regConvValue);
+            regValConfigMsb.innerText = toHexByte(regConfigValue >> 8);
+            regValConfigLsb.innerText = toHexByte(regConfigValue);
+            regValLoMsb.innerText = toHexByte(regLoThreshValue >> 8);
+            regValLoLsb.innerText = toHexByte(regLoThreshValue);
+            regValHiMsb.innerText = toHexByte(regHiThreshValue >> 8);
+            regValHiLsb.innerText = toHexByte(regHiThreshValue);
+            
+            // --- Update Conversion Register Description ---
+            let signedDecimalValue = regConvValue;
+            if (signedDecimalValue > 32767) { // Check if sign bit is 1
+                signedDecimalValue = signedDecimalValue - 65536; // Convert from 2's complement
+            }
+            regDescConv.innerHTML = `Decimal: <strong class="text-white">${signedDecimalValue}</strong><br><span class="text-xs text-gray-400">16-bit 2's complement result</span>`;
+
+            // --- Parse and describe Config Register ---
+            const osBit = (regConfigValue >> 15) & 1;
+            const muxBits = (regConfigValue >> 12) & 7;
+            const pgaBits = (regConfigValue >> 9) & 7;
+            const modeBit = (regConfigValue >> 8) & 1;
+            const rateBits = (regConfigValue >> 5) & 7;
+            const compBits = (regConfigValue >> 0) & 0x1F; // Last 5 bits
+            
+            const osBin = osBit.toString(2);
+            const muxBin = muxBits.toString(2).padStart(3, '0');
+            const pgaBin = pgaBits.toString(2).padStart(3, '0');
+            const modeBin = modeBit.toString(2);
+            const rateBin = rateBits.toString(2).padStart(3, '0');
+            const compBin = compBits.toString(2).padStart(5, '0');
+
+            // Create the color-coded binary string
+            let binaryStringHtml = `
+                <div class="font-mono text-sm mb-2 break-all" data-tooltip="16-bit binary representation">
+                    <span class="bit-os">${osBin}</span><span class="bit-mux">${muxBin}</span> <span class="bit-pga">${pgaBin}</span><span class="bit-mode">${modeBin}</span> <span class="bit-rate">${rateBin}</span> <span class="bit-comp">${compBin}</span>
+                </div>
+            `;
+            
+            let configDescHtml = `
+                ${binaryStringHtml}
+                <div>
+                    <div class="bit-os"><strong>[15] OS:</strong> ${osBit} (${osBit ? 'Ready' : 'Converting...'})</div>
+                    <div class="bit-mux"><strong>[14:12] MUX:</strong> ${muxBin} (${MUX_MAP[muxBin] || 'Unknown'})</div>
+                    <div class="bit-pga"><strong>[11:9] PGA:</strong> ${pgaBin} (${PGA_MAP[pgaBin] || 'Unknown'})</div>
+                    <div class="bit-mode"><strong>[8] MODE:</strong> ${modeBit} (${modeBit ? 'Single-Shot' : 'Continuous'})</div>
+                    <div class="bit-rate"><strong>[7:5] RATE:</strong> ${rateBin} (${RATE_MAP[rateBin] || 'Unknown'})</div>
+                    <div class="bit-comp"><strong>[4:0] COMP:</strong> ${compBin} (Comparator)</div>
+                </div>
+            `;
+            regDescConfig.innerHTML = configDescHtml;
+            
+            // --- Update Highlighting ---
+            const configCells = [regValConfigMsb, regValConfigLsb];
+            const convCells = [regValConvMsb, regValConvLsb];
+
+            if (osBit === 0) {
+                configCells.forEach(cell => cell.classList.add('animate-pulse', 'text-yellow-300'));
+            } else {
+                configCells.forEach(cell => cell.classList.remove('animate-pulse', 'text-yellow-300'));
+            }
+
+            if (regConvValue !== 0) {
+                 convCells.forEach(cell => cell.classList.add('text-green-300'));
+            } else {
+                 convCells.forEach(cell => cell.classList.remove('text-green-300'));
+            }
+        }
+        
+        function hidePackets() {
+            toSlavePacket.classList.add('opacity-0');
+            toMasterPacket.classList.add('opacity-0');
+        }
+
+        function showPacket(direction, content) {
+            hidePackets();
+            let packetEl = (direction === 'toSlave') ? toSlavePacket : toMasterPacket;
+            
+            // Add tooltips
+            content = content.replace('[S]', '<span class="font-bold" data-tooltip="START Condition">[S]</span>');
+            content = content.replace('[Sr]', '<span class="font-bold" data-tooltip="REPEATED START Condition">[Sr]</span>');
+            content = content.replace('[P]', '<span class="font-bold" data-tooltip="STOP Condition">[P]</span>');
+            content = content.replace('[A]', '<span class="font-bold" data-tooltip="ACK from Slave">[A]</span>');
+            content = content.replace('[W]', '<span class="font-bold" data-tooltip="Write bit (0)">W</span>');
+            content = content.replace('[R]', '<span class="font-bold" data-tooltip="Read bit (1)">R</span>');
+            content = content.replace('[NA]', '<span class="font-bold" data-tooltip="NACK from Master">[NA]</span>');
+
+            packetEl.innerHTML = content;
+            
+            // Force reflow for transition
+            void packetEl.offsetWidth; 
+            
+            packetEl.classList.remove('opacity-0');
+        }
+
+        function updateExplanation(text) {
+            explanation.classList.add('opacity-0');
+            /* SLOWED DOWN: Changed timeout from 300 to 500 */
+            setTimeout(() => {
+                explanation.innerHTML = text;
+                explanation.classList.remove('opacity-0');
+            }, 500);
+        }
+
+        // --- Main Step Logic ---
+        
+        function runStep(step) {
+            hidePackets();
+            readyBtn.classList.add('hidden'); // Hide by default
+
+            switch(step) {
+                // --- STEP 1: WRITE CONFIG TO START CONVERSION ---
+                case 1: {
+                    // Read PGA setting from dropdown
+                    currentPgaBits = pgaSelect.value;
+                    currentPgaRange = parseFloat(pgaSelect.options[pgaSelect.selectedIndex].dataset.range);
+
+                    const configMSB_bin = `1${MUX}${currentPgaBits}1`; // OS=1, MUX, PGA, MODE=1
+                    const configLSB_bin = `${RATE}00011`; // RATE, COMP_MODE=0, POL=0, LAT=0, QUE=11 (Disabled)
+                    
+                    const configMSB_val = parseInt(configMSB_bin, 2);
+                    const configLSB_val = parseInt(configLSB_bin, 2);
+                    
+                    const configMSB_hex = toHexByte(configMSB_val);
+                    const configLSB_hex = toHexByte(configLSB_val);
+
+                    // Master writes '1' to OS bit...
+                    regConfigValue = (configMSB_val << 8) | configLSB_val;
+                    updateMemoryTable(); // Show the written value momentarily
+                    
+                    // ...but the slave *immediately* sets it to '0' to start conversion
+                    regConfigValue &= 0x7FFF; // Clear OS bit (set to 0)
+                    
+                    updateExplanation(
+                        `<strong>Step 1: Write Config & Start Conversion</strong><br>
+                         The Master writes to the Config Register (0x01) using the selected PGA setting.
+                         Watch the table: the OS bit immediately flips to '0' as the ADC starts converting.`
+                    );
+                    showPacket('toSlave', `[S] Addr+[W] [A] <strong data-tooltip="Pointer: Config Reg">0x01</strong> [A] <strong data-tooltip="Config MSB">${configMSB_hex}</strong> [A] <strong data-tooltip="Config LSB">${configLSB_hex}</strong> [A] [P]`);
+                    
+                    masterState.innerHTML = `Writing Config...`;
+                    
+                    /* SLOWED DOWN: Changed timeout from 500 to 1000 */
+                    setTimeout(updateMemoryTable, 1000); // Show the change to OS=0
+                    
+                    nextBtn.innerText = 'Poll for Result';
+                    readyBtn.classList.remove('hidden');
+                    break;
+                }
+
+                // --- STEP 2: POLL CONFIG REGISTER (BUSY) ---
+                case 2: {
+                    const configMSB_hex = toHexByte(regConfigValue >> 8); // Will have OS=0
+                    updateExplanation(
+                        `<strong>Step 2: Poll Config Register (Busy)</strong><br>
+                         The Master reads the Config Register to check the OS bit.
+                         The slave reports <strong class="text-yellow-400">OS Bit = 0</strong>, meaning "still busy converting".`
+                    );
+                    
+                    showPacket('toSlave', `[S] Addr+[W] [A] <strong data-tooltip="Pointer: Config Reg">0x01</strong> [A] [Sr] Addr+[R] [A] ...`);
+                    masterState.innerHTML = `Polling status... (Waiting for OS=1)`;
+                    
+                    /* SLOWED DOWN: Changed timeout from 1000 to 1500 */
+                    setTimeout(() => {
+                        showPacket('toMaster', `... <strong data-tooltip="Config MSB Read">${configMSB_hex}</strong> [NA] [P]`);
+                    }, 1500);
+                    
+                    updateMemoryTable(); // Ensure table reflects OS=0
+                    nextBtn.innerText = 'Poll Again';
+                    readyBtn.classList.remove('hidden');
+                    break;
+                }
+                
+                // --- STEP 2: POLL CONFIG REGISTER (READY) ---
+                case 3: {
+                    // Conversion is done, OS bit flips to 1
+                    regConfigValue |= 0x8000; // Set OS bit to 1
+                    updateMemoryTable();
+                    
+                    const configMSB_hex = toHexByte(regConfigValue >> 8); // Will have OS=1
+
+                    updateExplanation(
+                        `<strong>Step 2: Poll Config Register (Ready!)</strong><br>
+                         The Master polls again. The ADC has finished.
+                         The slave now reports <strong class="text-green-400">OS Bit = 1</strong>, meaning "conversion complete".`
+                    );
+                    
+                    showPacket('toSlave', `[S] Addr+[W] [A] <strong data-tooltip="Pointer: Config Reg">0x01</strong> [A] [Sr] Addr+[R] [A] ...`);
+                    masterState.innerHTML = `Polling status... (Waiting for OS=1)`;
+                    
+                    /* SLOWED DOWN: Changed timeout from 1000 to 1500 */
+                    setTimeout(() => {
+                        showPacket('toMaster', `... <strong data-tooltip="Config MSB Read">${configMSB_hex}</strong> [NA] [P]`);
+                        masterState.innerHTML = `<strong class="text-green-400">OS=1 Received!</strong> Ready to read result.`;
+                    }, 1500);
+                    
+                    nextBtn.innerText = 'Read Result';
+                    break;
+                }
+
+                // --- STEP 3: READ CONVERSION REGISTER ---
+                case 4: {
+                    // Calculate the result based on slider/PGA
+                    calculateADCValue();
+                    updateMemoryTable(); // Update table with regConvValue
+
+                    updateExplanation(
+                        `<strong>Step 3: Read Conversion Register</strong><br>
+                         The Master writes the Conversion Register pointer (0x00), then reads the 2-byte result.
+                         The value <strong class="text-green-300">${resultMSB}${resultLSB}</strong> appears in the table, calculated from your voltage/PGA settings.`
+                    );
+                    
+                    showPacket('toSlave', `[S] Addr+[W] [A] <strong data-tooltip="Pointer: Conv. Reg">0x00</strong> [A] [Sr] Addr+[R] [A] ...`);
+                    masterState.innerHTML = `Reading result...`;
+
+                    /* SLOWED DOWN: Changed timeout from 1000 to 1500 */
+                    setTimeout(() => {
+                        showPacket('toMaster', `... <strong data-tooltip="Result MSB">${resultMSB}</strong> [A] <strong data-tooltip="Result LSB">${resultLSB}</strong> [NA] [P]`);
+                        masterState.innerHTML = `Result: <strong>${resultMSB}${resultLSB}</strong> (Twos Comp. int16)`;
+                    }, 1500);
+                    
+                    nextBtn.innerText = 'Reset Simulation';
+                    break;
+                }
+
+                // --- RESET ---
+                case 0:
+                default: {
+                    // Read initial values from controls
+                    currentPgaBits = pgaSelect.value;
+                    currentPgaRange = parseFloat(pgaSelect.options[pgaSelect.selectedIndex].dataset.range);
+                    currentVoltage = parseFloat(voltageSlider.value);
+                    
+                    // Calculate default config value
+                    const configMSB_bin = `1${MUX}${currentPgaBits}1`; // OS=1 (default), MUX, PGA, MODE=1
+                    const configLSB_bin = `${RATE}00011`; // RATE, COMP_QUE=11 (Disabled)
+                    regConfigValue = (parseInt(configMSB_bin, 2) << 8) | parseInt(configLSB_bin, 2);
+                    regConvValue = 0x0000; // Clear result
+                    
+                    updateMemoryTable();
+                    
+                    updateExplanation(
+                        `Welcome! Set your input voltage and PGA, then click "Start" to begin.`
+                    );
+                    masterState.innerHTML = `Idle`;
+                    nextBtn.innerText = 'Start';
+                    break;
+                }
+            }
+        }
+
+        // --- Event Listeners ---
+        
+        voltageSlider.addEventListener('input', (e) => {
+            currentVoltage = parseFloat(e.target.value);
+            voltageDisplay.innerText = `${currentVoltage.toFixed(3)} V`;
+            // If simulation is at the end, dynamically update the result
+            if (currentStep === 4) {
+                calculateADCValue();
+                updateMemoryTable();
+                masterState.innerHTML = `Result: <strong>${resultMSB}${resultLSB}</strong> (Twos Comp. int16)`;
+            }
+        });
+        
+        pgaSelect.addEventListener('input', (e) => {
+             currentPgaBits = e.target.value;
+             currentPgaRange = parseFloat(e.target.options[e.target.selectedIndex].dataset.range);
+             // If simulation is at the end, dynamically update the result
+             if (currentStep === 4) {
+                calculateADCValue();
+                updateMemoryTable();
+                masterState.innerHTML = `Result: <strong>${resultMSB}${resultLSB}</strong> (Twos Comp. int16)`;
+             }
+             // If at start, update the initial config reg display
+             if (currentStep === 0) {
+                 runStep(0);
+             }
+        });
+
+        nextBtn.addEventListener('click', () => {
+            // Logic to handle polling loop
+            if (currentStep === 2) { // If we are in "Poll Again"
+                currentStep = 2; // Stay in polling state
+            } else {
+                currentStep = (currentStep + 1) % 5; // Advance step (0-4)
+            }
+            runStep(currentStep);
+        });
+
+        readyBtn.addEventListener('click', () => {
+            // Force the "Ready" state
+            currentStep = 3;
+            runStep(currentStep);
+        });
+        
+        // Initial state
+        runStep(0);
+
+    </script>
+
+</body>
+</html>
+
+

@@ -1,0 +1,163 @@
+# Instrumentation System Configuration
+# Version: 1.0
+# Application: Bike Battery Monitoring System
+# Calibrated: 2024-08-11
+# Technician: Field Engineer
+
+metadata:
+  version: "1.0"
+  calibration_date: "2024-08-11"
+  calibrated_by: "Field Engineer"
+  description: "Bike configuration with battery monitoring"
+  notes: |
+    Calibrated using Fluke 87V multimeter at 25°C ambient temperature.
+    Supply voltage: 12.000V ±0.001V
+    All measurements verified with precision current source.
+
+hardware:
+  i2c_bus: "/dev/i2c-3"
+  i2c_max_retries: 3        # Maximum I2C read retry attempts
+  i2c_retry_delay_ms: 1     # Base retry delay (exponential backoff)
+  boards:
+    - address: 0x48
+      description: "Main battery monitoring board"
+
+system:
+  main_loop_interval_ms: 100    # 10 Hz sampling rate
+  data_send_interval_ms: 500    # 2 Hz transmission rate
+
+channels:
+  - board_address: 0x48
+    pin: "A0"
+    id: "A0"
+    description: ""
+    unit: "V"
+    calibration:
+      # Linear calibration: real_value = slope * adc_value + offset
+      slope: 0.00219780      # A per ADC count
+      offset: -0.00732386        # A baseline offset
+      r_squared: 0.9998          # Calibration quality metric
+      calibration_points: 15     # Number of calibration measurements
+      range_min: -100.0          # Calibrated range minimum (A)
+      range_max: 100.0           # Calibrated range maximum (A)
+    adc:
+      gain: "GAIN_4096MV"        # ±4.096V range
+      filter_alpha: 0.8          # EMA filter coefficient (0.0-1.0)
+    validation:
+      min_value: -120.0          # Absolute minimum valid value
+      max_value: 120.0           # Absolute maximum valid value
+      timeout_threshold_s: 5.0   # Alert if no new data for 5s
+
+  - board_address: 0x48
+    pin: "A1"
+    id: "A1"
+    description: ""
+    unit: "V"
+    calibration:
+      slope: 0.00216138
+      offset: -0.00720253
+      r_squared: 0.9995
+      calibration_points: 10
+      range_min: 10.0
+      range_max: 15.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+    validation:
+      min_value: 8.0             # Battery critically low
+      max_value: 16.0            # Battery overcharge protection
+
+  - board_address: 0x48
+    pin: "A2" 
+    id: "A2"
+    description: ""
+    unit: "V"
+    calibration:
+      slope: 0.00218898
+      offset: -0.00766024
+      r_squared: 0.9992
+      calibration_points: 8
+      range_min: 10.0
+      range_max: 15.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+    validation:
+      min_value: 8.0
+      max_value: 16.0
+
+  - board_address: 0x48
+    pin: "A3"
+    id: "A3"
+    description: ""
+    unit: "V"
+    calibration:
+      slope: 0.00012523
+      offset: -0.00569583
+      r_squared: 0.9997
+      calibration_points: 12
+      range_min: -50.0
+      range_max: 50.0
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+    validation:
+      min_value: -80.0
+      max_value: 80.0
+      timeout_threshold_s: 5.0
+
+# InfluxDB configuration with environment variable expansion
+influxdb:
+  url: "${INFLUXDB_URL}"
+  bucket: "${INFLUXDB_BUCKET}"
+  org: "${INFLUXDB_ORG}"
+  token: "${INFLUXDB_TOKEN}"
+  measurement: "measurements"
+  tags:
+    source: "instrumentacao"
+    location: "bike"
+    version: "1.0"
+  batch_size: 10               # Number of points per batch
+  flush_interval_ms: 1000      # Force flush every 1s
+  retry_attempts: 3            # Network retry attempts
+  retry_delay_ms: 1000         # Delay between retries
+
+# Logging configuration
+logging:
+  csv_enabled: true
+  csv_directory: "./logs"
+  csv_filename_format: "measurements_%Y%m%d_%H%M%S.csv"
+  max_file_size_mb: 100        # Rotate after 100MB
+  max_files: 30                # Keep 30 files max
+  sync_interval_s: 60          # Sync to disk every 60s
+
+# Battery monitoring with coulomb counting
+battery:
+  coulomb_counting_enabled: false
+  capacity_ah: 100.0           # Battery capacity in amp-hours
+  current_channel_id: "corrente_bateria_principal"
+  initial_soc_percent: 80.0    # Initial state of charge
+  soc_save_interval_s: 300     # Save SoC every 5 minutes
+  soc_file_path: "./logs/soc_state.dat"
+  low_voltage_threshold: 11.5  # Low battery warning (V)
+  critical_voltage_threshold: 10.8  # Critical battery alarm (V)
+
+# GPS configuration via gpsd integration
+gps:
+  enabled: false
+  gpsd_host: "localhost"       # gpsd daemon host
+  gpsd_port: 2947             # gpsd default port  
+  timeout_s: 10               # Connection timeout
+  reconnect_interval_s: 30    # Retry connection every 30s
+  min_satellites: 4           # Minimum satellites for valid fix
+  position_precision: 6       # Decimal places for lat/lon
+  speed_units: "kph"          # Speed units: kph, mph, mps
+
+# Network and connectivity
+network:
+  socket_server_enabled: true
+  socket_port: 2025            # TCP port for local clients
+  update_interval_ms: 500      # JSON API update interval (milliseconds)
+  max_clients: 5               # Maximum concurrent connections
+  offline_queue_enabled: true  # Queue data when offline
+  offline_queue_max_size_mb: 50 # Maximum offline queue size

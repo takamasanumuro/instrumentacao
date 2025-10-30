@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <linux/i2c-dev.h>
 #include "ansi_colors.h"
+#include <time.h>
 
 // --- Internal Constants ---
 
@@ -93,7 +94,21 @@ int ads1115_init(const char* i2c_bus_str, long i2c_address) {
     return i2c_handle;
 }
 
-int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t *conversionResult) {
+int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t *conversion_result) {
+    
+    // --- ADS111x Register and Bitfield Definitions ---
+    // Register Pointer Addresses
+    #define ADS_REG_CONV_RESULT 0x00 // Conversion Register (Read-Only)
+    #define ADS_REG_CONFIG      0x01 // Config Register (Read/Write)
+    
+    // Configuration Register MSB Settings (Config[15:8])
+    #define ADS_OS_START_SINGLE_CONV 0x80 // Bit 15: Begin a single conversion (Write 1) 
+    #define ADS_MODE_SINGLE_SHOT     0x01 // Bit 8: Power-down single-shot mode (Write 1) 
+    #define ADS_OS_CONV_READY_MASK   0x80 // Bit 15: Device is not currently performing a conversion (Read 1)
+
+    // Configuration Register LSB Settings (Config[7:0])
+    #define ADS_COMP_DISABLE         0x03 // Bits [1:0]: Disable comparator
+
     int gain = gain_to_int(gain_str);
     if (gain == -1) {
         fprintf(stderr, "ADS1115: Invalid gain setting '%s' for channel %d\n", gain_str, channel);
@@ -102,42 +117,81 @@ int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t 
 
     uint8_t multiplexer = channel_to_mux(channel);
 
-    // Prepare the 16-bit configuration register value
-    unsigned char config[3];
-    config[0] = REG_CONFIG;
-    config[1] = (multiplexer << 4) | (gain << 1) | 0x81; // Set OS bit to start a single conversion
-    config[2] = (RATE_128 << 5) | 3; // Set rate to 128SPS and disable comparator
+    // Calculated Config Register Values
+    uint8_t config_msb = ADS_OS_START_SINGLE_CONV | (multiplexer << 4) | (gain << 1) | ADS_MODE_SINGLE_SHOT;
+    uint8_t config_lsb = (RATE_128 << 5) | ADS_COMP_DISABLE;
+    
+    // --- Step 1: Write to the Config Register to start the conversion (Write Word Format) ---
+    // Structure: [Pointer: Config_Reg] [Data_MSB: Config] [Data_LSB: Config]
+    unsigned char write_config_cmd[3] = {
+        ADS_REG_CONFIG, 
+        config_msb, 
+        config_lsb
+    };
 
-    if (write(i2c_handle, config, 3) != 3) {
+    if (write(i2c_handle, write_config_cmd, 3) != 3) {
+        // Return -2: Error during I2C Master Write for Configuration
         perror("ADS1115: Config write error");
         return -2;
     }
 
-    // The ADS1115 datasheet says conversion time for 128SPS is ~7.8ms.
-    // A 10ms sleep is more than enough time for the conversion to complete.
-    usleep(10000);
-
-    // Point to the conversion register to read the result
-    config[0] = REG_CONV;
-    if (write(i2c_handle, &config[0], 1) != 1) {
-        perror("ADS1115: Address pointer write error");
-        return -3;
+    // --- Step 2: Wait for Conversion Ready by Polling the OS bit ---
+    // First set register pointer to configuration register, then read MSB until OS bit is set
+    unsigned char pointer_config_cmd[1] = {ADS_REG_CONFIG};
+    if (write(i2c_handle, pointer_config_cmd, 1) != 1) {
+        // Error setting Pointer to Config Register for polling
+        return -2;
     }
 
-    // Read the 2-byte (16-bit) result
-    unsigned char read_buf[2];
-    if (read(i2c_handle, read_buf, 2) != 2) {
-        perror("ADS1115: Conversion read error");
-        return -4;
+    time_t start_time = time(NULL);
+    unsigned char config_read_msb = 0;
+
+    // Loop until OS bit (Bit 15, or MSB) is set, indicating conversion complete
+    while (1) {
+        // Safety timeout to prevent infinite loop
+        if ((time(NULL) - start_time) > 3) { // Timeout after 3 seconds
+            printf("ADS1115: Problem reading I2C. Check board address and connections!\n");
+            // Timeout or problem reading I2C
+            return -3; 
+        }
+
+        // Read the MSB of the Config register to check the OS bit
+        if (read(i2c_handle, &config_read_msb, 1) != 1) {
+            // Error reading Config MSB
+            return -4;
+        }
+
+        if (config_read_msb & ADS_OS_CONV_READY_MASK) // Check if Bit 15 (0x80) is 1
+        {
+            break; // Conversion is complete!
+        }
     }
 
-    // Combine the two bytes into a single signed 16-bit integer
-    *conversionResult = (int16_t)((read_buf[0] << 8) | read_buf[1]);
-    return 0;
+    // --- Step 3: Read the Conversion Result Register
+    // First write the register pointer to the Conversion Result Register, then read 2 bytes
+    unsigned char pointer_conv_cmd[1] = {ADS_REG_CONV_RESULT};
+    if (write(i2c_handle, pointer_conv_cmd, 1) != 1) {
+        // Error setting Pointer to Conversion Register
+        return -4; 
+    }
+
+    unsigned char conversion_result_MSB[2] = {0U, 0U};
+    
+    // Read 2 bytes (16 bits) in big-endian format (MSB first)
+    if (read(i2c_handle, conversion_result_MSB, 2) != 2) {
+        // Error reading Conversion result
+        return -5; 
+    }
+
+    // Combine bytes into a 16-bit signed integer (Twos Complement)
+    *conversion_result = (int16_t) (conversion_result_MSB[0] << 8) | conversion_result_MSB[1];
+    
+    return 0; // Success
+
 }
 
 int ads1115_read_with_retry(int i2c_handle, uint8_t channel, const char* gain_str, 
-                           int16_t *conversionResult, int max_retries) {
+                           int16_t *conversion_result, int max_retries) {
     if (max_retries <= 0) {
         max_retries = 1; // At least one attempt
     }
@@ -145,7 +199,7 @@ int ads1115_read_with_retry(int i2c_handle, uint8_t channel, const char* gain_st
     int last_error = 0;
     
     for (int attempt = 0; attempt < max_retries; attempt++) {
-        int result = ads1115_read(i2c_handle, channel, gain_str, conversionResult);
+        int result = ads1115_read(i2c_handle, channel, gain_str, conversion_result);
         
         if (result == 0) {
             // Success - log retry count if this wasn't the first attempt
