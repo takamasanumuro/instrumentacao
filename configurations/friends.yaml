@@ -1,26 +1,18 @@
 # Instrumentation System Configuration
-# Version: 1.0
-# Application: Bike Battery Monitoring System
-# Calibrated: 2024-08-11
-# Technician: Field Engineer
 
 metadata:
   version: "1.0"
-  calibration_date: "2024-08-11"
-  calibrated_by: "Field Engineer"
-  description: "Bike configuration with battery monitoring"
+  calibration_date: "11-11-2025"
+  description: ""
   notes: |
-    Calibrated using Fluke 87V multimeter at 25°C ambient temperature.
-    Supply voltage: 12.000V ±0.001V
-    All measurements verified with precision current source.
-
+    
 hardware:
   i2c_bus: "/dev/i2c-2"
   i2c_max_retries: 3        # Maximum I2C read retry attempts
   i2c_retry_delay_ms: 1     # Base retry delay (exponential backoff)
   boards:
     - address: 0x48
-      description: "Main battery monitoring board"
+      description: ""
 
 system:
   main_loop_interval_ms: 100    # 10 Hz sampling rate
@@ -29,13 +21,13 @@ system:
 channels:
   - board_address: 0x48
     pin: "A0"
-    id: "Corrente_Bateria_Principal"
+    id: "TensaoA0"
     description: ""
-    unit: "A"
+    unit: "V"
     calibration:
       # Linear calibration: real_value = slope * adc_value + offset
-      slope: 0.002059726118	     # A per ADC count
-      offset: -27.06994605         # A baseline offset
+      slope: 0.0021978		     # A per ADC count
+      offset: -0.00732386         # A baseline offset
       r_squared: 0.9998          # Calibration quality metric
       calibration_points: 15     # Number of calibration measurements
       range_min: -15         # Calibrated range minimum (A)
@@ -50,12 +42,12 @@ channels:
 
   - board_address: 0x48
     pin: "A1"
-    id: "Corrente_Bateria_Auxiliar"
+    id: "TensaoA1"
     description: ""
-    unit: "A"
+    unit: "V"
     calibration:
-      slope: 0.002082894516	
-      offset: -27.472542
+      slope: 0.00216138	
+      offset: -0.00720253
       r_squared: 0.9995
       calibration_points: 10
       range_min: -15.0
@@ -69,12 +61,12 @@ channels:
 
   - board_address: 0x48
     pin: "A2" 
-    id: "Tensao_Bateria_Principal"
+    id: "TensaoA2"
     description: ""
     unit: "V"
     calibration:
-      slope: 0.002311586466	
-      offset: -0.005998582911
+      slope: 0.00218898	
+      offset: -0.00766024
       r_squared: 0.9992
       calibration_points: 8
       range_min: 10.0
@@ -88,12 +80,12 @@ channels:
 
   - board_address: 0x48
     pin: "A3"
-    id: "Tensao_Bateria_Auxiliar"
+    id: "CorrenteA3"
     description: ""
-    unit: "V"
+    unit: "A"
     calibration:
-      slope: 0.002312645744	
-      offset: -0.00553237918
+      slope: 0.002059726118	
+      offset: -26.86994605
       r_squared: 0.9997
       calibration_points: 12
       range_min: -50.0

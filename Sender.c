@@ -233,7 +233,7 @@ static bool send_compressed_batch_callback(const void* data, size_t size, void* 
     SenderContext* context = (SenderContext*)user_context;
     
     char url[256];
-    snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=s",
+    snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=ns",
              context->influxdb_context.url,
              context->influxdb_context.org, context->influxdb_context.bucket);
 
@@ -254,7 +254,7 @@ static bool send_compressed_batch_callback(const void* data, size_t size, void* 
 // A wrapper around the core curl logic for sending a single line protocol string.
 static bool send_line_protocol(SenderContext* context, const char* line_protocol) {
     char url[256];
-    snprintf(url, sizeof(url), "%s/api/v2/write?org=%s&bucket=%s&precision=s",
+    snprintf(url, sizeof(url), "http://%s:8086/api/v2/write?org=%s&bucket=%s&precision=ns",
              context->influxdb_context.url,
              context->influxdb_context.org, context->influxdb_context.bucket);
 
@@ -289,13 +289,16 @@ static bool send_http_post(const SenderContext* context, const char* url, struct
     curl_easy_setopt(curl_handle, CURLOPT_URL, url);
     curl_easy_setopt(curl_handle, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl_handle, CURLOPT_FOLLOWLOCATION, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA, (void *)&chunk);
     curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDS, post_data);
+    curl_easy_setopt(curl_handle, CURLOPT_POST, 1L);
     if (post_size > 0) { // For binary data
         curl_easy_setopt(curl_handle, CURLOPT_POSTFIELDSIZE, post_size);
     }
-    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 10L);
-    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 20L);
+    curl_easy_setopt(curl_handle, CURLOPT_CONNECTTIMEOUT, 2L);
+    curl_easy_setopt(curl_handle, CURLOPT_TIMEOUT, 2L);
+    // curl_easy_setopt(curl_handle, CURLOPT_VERBOSE, 1L);
 
     CURLcode result = curl_easy_perform(curl_handle);
     bool success = (result == CURLE_OK);

@@ -41,8 +41,8 @@ static bool add_channel_fields(LineProtocolBuilder* builder, const Channel chann
             channels[i].id, 
             channel_get_calibrated_value(&channels[i]));
         if (error != LP_SUCCESS) {
-            fprintf(stderr, "Error adding field for channel %d: %d\n", 
-                    channels[i].id, error);
+            fprintf(stderr, "Error adding field for channel [%s]: %s\n", 
+                    channels[i].id, lp_error_string(error));
             return false;
         }
     }

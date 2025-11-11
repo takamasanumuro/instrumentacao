@@ -236,7 +236,7 @@ void app_manager_run(ApplicationManager* app) {
         display_manager_update_status(app->display_manager, &status);
         display_manager_refresh(app->display_manager);
         
-        usleep(app->yaml_config->system.main_loop_interval_ms * 1000);
+        // usleep(app->yaml_config->system.main_loop_interval_ms * 1000);
     }
 }
 

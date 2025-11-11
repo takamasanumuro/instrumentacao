@@ -10,8 +10,15 @@
 
 // --- Internal Constants ---
 
-// RATE in SPS (samples per second). Using a fixed rate for this application.
+// RATE in SPS (samples per second)
+#define RATE_8   0
+#define RATE_16  1
+#define RATE_32  2
+#define RATE_64  3
 #define RATE_128 4
+#define RATE_250 5
+#define RATE_475 6
+#define RATE_860 7
 
 // GAIN in mV, max expected voltage as input
 #define GAIN_6144MV 0
@@ -119,7 +126,7 @@ int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t 
 
     // Calculated Config Register Values
     uint8_t config_msb = ADS_OS_START_SINGLE_CONV | (multiplexer << 4) | (gain << 1) | ADS_MODE_SINGLE_SHOT;
-    uint8_t config_lsb = (RATE_128 << 5) | ADS_COMP_DISABLE;
+    uint8_t config_lsb = (RATE_860 << 5) | ADS_COMP_DISABLE;
     
     // --- Step 1: Write to the Config Register to start the conversion (Write Word Format) ---
     // Structure: [Pointer: Config_Reg] [Data_MSB: Config] [Data_LSB: Config]

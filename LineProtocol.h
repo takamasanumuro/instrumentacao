@@ -19,6 +19,7 @@ typedef enum {
     LP_ERROR_INVALID_FIELD_KEY
 } LineProtocolError;
 
+
 // Field types supported by InfluxDB Line Protocol
 typedef enum {
     LP_FIELD_TYPE_DOUBLE,

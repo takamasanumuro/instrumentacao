@@ -386,14 +386,23 @@ bool lp_is_valid_measurement_name(const char* name) {
 
 bool lp_is_valid_tag_key(const char* key) {
     if (!key || *key == '\0') return false;
-    
-    // Similar to measurement name but more restrictive
+
+    // Reject leading or trailing whitespace
+    if (isspace((unsigned char)key[0])) return false;
+    size_t len = strlen(key);
+    if (len == 0) return false;
+    if (isspace((unsigned char)key[len - 1])) return false;
+
+    // Allow alphanumeric characters anywhere, allow whitespace in the middle
+    // but disallow any other characters.
     for (const char* p = key; *p; p++) {
-        if (!isalnum(*p) && *p != '_') {
-            return false;
-        }
+        unsigned char ch = (unsigned char)*p;
+        if (isalnum(ch)) continue;
+        if (isspace(ch)) continue; // allowed in middle because we've already rejected ends
+        if (ch == '_' || ch == '-' || ch == '.') continue;
+        return false;
     }
-    
+
     return true;
 }
 
@@ -425,7 +434,12 @@ const char* lp_error_string(LineProtocolError error) {
 }
 
 int64_t lp_get_current_timestamp(void) {
-    return (int64_t)time(NULL);
+    struct timespec spec;
+    
+    clock_gettime(CLOCK_REALTIME, &spec); 
+
+    // Convert seconds to nanoseconds and add nanoseconds
+    return (int64_t)spec.tv_sec * 1000000000 + (int64_t)spec.tv_nsec;
 }
 
 // Convenience functions
