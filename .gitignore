@@ -25,7 +25,8 @@ compile_commands.json
 *.swp
 *.swo
 *~
-.vscode/
+.vscode/.env
+.vscode/c_cpp.settings.json
 .DS_Store
 
 #AI assistants

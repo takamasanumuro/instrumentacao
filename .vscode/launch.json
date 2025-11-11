@@ -1,0 +1,33 @@
+{
+  "configurations": [
+    {
+      "type": "cppdbg",
+      "request": "launch",
+      "name": "Launch instrumentation (gdb)",
+      "program": "${workspaceFolder}/build/instrumentation",
+      "args": [
+        "${input:configFile}"
+      ],
+      "cwd": "${workspaceFolder}/build",
+      "preLaunchTask": "cmake-build",
+      "envFile": "${workspaceFolder}/.vscode/.env",
+      "stopAtEntry": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb"
+    }
+  ],
+  "inputs": [
+    {
+      "type": "pickString",
+      "id": "configFile",
+      "description": "Select YAML configuration file to pass as the program argument",
+      "options": [
+        "configurations/bancada.yaml",
+        "configurations/bike.yaml",
+        "configurations/empty.yaml",
+        "configurations/invalid_test.yaml",
+        "configurations/friends.yaml"
+      ]
+    }
+  ]
+}

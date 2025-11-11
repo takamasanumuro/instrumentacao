@@ -1,0 +1,15 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cmake-build",
+      "type": "shell",
+      "command": "mkdir -p build && cd build && cmake .. && make instrumentation",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
