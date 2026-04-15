@@ -614,7 +614,7 @@ static void fallback_print_measurements(const Channel* channels, int channel_cou
     printf("--- Measurements ---\n");
     for (int i = 0; i < channel_count && i < MAX_TOTAL_CHANNELS; i++) {
         if (channels[i].is_active) {
-            printf("[Board 0x%02X] Channel %d (%s): %.2f %s\n",
+            printf("Board 0x%02X[Ch %d] %-30s: %8.2f %s\n",
                    channels[i].board_address,
                    channels[i].pin,
                    channels[i].id,
