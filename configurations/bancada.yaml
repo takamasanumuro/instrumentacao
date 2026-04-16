@@ -8,7 +8,6 @@ metadata:
   version: "1.0"
   calibration_date: "2024-08-11"
   calibrated_by: "Field Engineer"
-  description: "Bike configuration with battery monitoring"
   notes: |
     Calibrated using Fluke 87V multimeter at 25°C ambient temperature.
     Supply voltage: 12.000V ±0.001V
@@ -21,6 +20,8 @@ hardware:
   boards:
     - address: 0x48
       description: "Main battery monitoring board"
+    - address: 0x49
+      description: "Second"
 
 system:
   main_loop_interval_ms: 100    # 10 Hz sampling rate
@@ -30,81 +31,103 @@ channels:
   - board_address: 0x48
     pin: "A0"
     id: "Corrente_Bateria_Principal"
-    description: ""
     unit: "A"
     calibration:
-      # Linear calibration: real_value = slope * adc_value + offset
-      slope: 0.002059726118	     # A per ADC count
-      offset: -27.06994605         # A baseline offset
-      r_squared: 0.9998          # Calibration quality metric
-      calibration_points: 15     # Number of calibration measurements
-      range_min: -15         # Calibrated range minimum (A)
-      range_max: 15          # Calibrated range maximum (A)
-    adc:
-      gain: "GAIN_4096MV"        # ±4.096V range
-      filter_alpha: 0.8          # EMA filter coefficient (0.0-1.0)
-    validation:
-      min_value: -120.0          # Absolute minimum valid value
-      max_value: 120.0           # Absolute maximum valid value
-      timeout_threshold_s: 5.0   # Alert if no new data for 5s
-
-  - board_address: 0x48
-    pin: "A1"
-    id: "Corrente_Bateria_Auxiliar"
-    description: ""
-    unit: "A"
-    calibration:
-      slope: 0.002082894516	
-      offset: -27.472542
-      r_squared: 0.9995
-      calibration_points: 10
-      range_min: -15.0
-      range_max: 15.0
+      slope: 0.002059726118
+      offset: -27.06994605
     adc:
       gain: "GAIN_4096MV"
       filter_alpha: 0.8
-    validation:
-      min_value: 8.0             # Battery critically low
-      max_value: 16.0            # Battery overcharge protection
+
+  - board_address: 0x48
+    pin: "A1"
+    id: "Corrente_Celula_Hidrogenio"
+    unit: "A"
+    calibration:
+      slope: 0.00207821
+      offset: -27.47133057
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
 
   - board_address: 0x48
     pin: "A2" 
     id: "Tensao_Bateria_Principal"
-    description: ""
     unit: "V"
     calibration:
-      slope: 0.002311586466	
+      slope: 0.002311586466
       offset: -0.005998582911
-      r_squared: 0.9992
-      calibration_points: 8
-      range_min: 10.0
-      range_max: 15.0
     adc:
       gain: "GAIN_4096MV"
       filter_alpha: 0.8
-    validation:
-      min_value: 8.0
-      max_value: 16.0
 
   - board_address: 0x48
     pin: "A3"
-    id: "Tensao_Bateria_Auxiliar"
-    description: ""
+    id: "Tensao_Celula_Hidrogenio"
     unit: "V"
     calibration:
-      slope: 0.002312645744	
+      slope: 0.002312645744
       offset: -0.00553237918
-      r_squared: 0.9997
-      calibration_points: 12
-      range_min: -50.0
-      range_max: 50.0
     adc:
       gain: "GAIN_4096MV"
       filter_alpha: 0.8
-    validation:
-      min_value: -80.0
-      max_value: 80.0
-      timeout_threshold_s: 5.0
+
+  - board_address: 0x49
+    pin: "A0"
+    id: "Corrente_Sistema_Auxiliar"
+    unit: "A"
+    calibration:
+      slope: 0.00205918
+      offset: -27.32578402
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+
+  - board_address: 0x49
+    pin: "A1"
+    id: "Corrente_Saida_Boost"
+    unit: "A"
+    calibration:
+      slope: 0.002082894516
+      offset: -27.472542
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+
+  #- board_address: 0x49
+  #  pin: "A2" 
+  #  id: "Pressao_Cilindro_Hidrogenio"
+  #  unit: "MPa"
+  #  calibration:
+  #    slope: 0.002311586466
+  #    offset: -0.005998582911
+  #  adc:
+  #    gain: "GAIN_4096MV"
+  #    filter_alpha: 0.8
+
+  - board_address: 0x49
+    pin: "A2" 
+    id: "Pressao_Cilindro_Hidrogenio"
+    unit: "bar"
+    calibration:
+      slope: 0.06934759398
+      offset: -0.17995748733
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
+
+
+
+  - board_address: 0x49
+    pin: "A3"
+    id: "Tensao_Barramento_Auxiliar"
+    unit: "V"
+    calibration:
+      slope: 0.002312645744
+      offset: -0.00553237918
+    adc:
+      gain: "GAIN_4096MV"
+      filter_alpha: 0.8
 
 # InfluxDB configuration with environment variable expansion
 influxdb:
@@ -112,52 +135,20 @@ influxdb:
   bucket: "${INFLUXDB_BUCKET}"
   org: "${INFLUXDB_ORG}"
   token: "${INFLUXDB_TOKEN}"
-  measurement: "measurements"
-  tags:
-    source: "instrumentacao"
-    location: "bike"
-    version: "1.0"
-  batch_size: 10               # Number of points per batch
-  flush_interval_ms: 1000      # Force flush every 1s
-  retry_attempts: 3            # Network retry attempts
-  retry_delay_ms: 1000         # Delay between retries
 
 # Logging configuration
 logging:
   csv_enabled: true
   csv_directory: "./logs"
-  csv_filename_format: "measurements_%Y%m%d_%H%M%S.csv"
-  max_file_size_mb: 100        # Rotate after 100MB
-  max_files: 30                # Keep 30 files max
-  sync_interval_s: 60          # Sync to disk every 60s
 
 # Battery monitoring with coulomb counting
 battery:
   coulomb_counting_enabled: false
-  capacity_ah: 100.0           # Battery capacity in amp-hours
+  capacity_ah: 100.0
   current_channel_id: "corrente_bateria_principal"
-  initial_soc_percent: 80.0    # Initial state of charge
-  soc_save_interval_s: 300     # Save SoC every 5 minutes
-  soc_file_path: "./logs/soc_state.dat"
-  low_voltage_threshold: 11.5  # Low battery warning (V)
-  critical_voltage_threshold: 10.8  # Critical battery alarm (V)
-
-# GPS configuration via gpsd integration
-gps:
-  enabled: false
-  gpsd_host: "localhost"       # gpsd daemon host
-  gpsd_port: 2947             # gpsd default port  
-  timeout_s: 10               # Connection timeout
-  reconnect_interval_s: 30    # Retry connection every 30s
-  min_satellites: 4           # Minimum satellites for valid fix
-  position_precision: 6       # Decimal places for lat/lon
-  speed_units: "kph"          # Speed units: kph, mph, mps
 
 # Network and connectivity
 network:
   socket_server_enabled: true
-  socket_port: 2025            # TCP port for local clients
-  update_interval_ms: 500      # JSON API update interval (milliseconds)
-  max_clients: 5               # Maximum concurrent connections
-  offline_queue_enabled: true  # Queue data when offline
-  offline_queue_max_size_mb: 50 # Maximum offline queue size
+  socket_port: 2025
+  update_interval_ms: 500

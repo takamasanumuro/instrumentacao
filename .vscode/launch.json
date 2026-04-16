@@ -14,7 +14,22 @@
       "stopAtEntry": false,
       "MIMode": "gdb",
       "miDebuggerPath": "/usr/bin/gdb"
-    }
+    },
+    {
+      "type": "cppdbg",
+      "request": "launch",
+      "name": "deb",
+      "program": "${workspaceFolder}/build/instrumentation",
+      "args": [
+        "configurations/bancada.yaml"
+      ],
+      "cwd": "${workspaceFolder}/build",
+      "preLaunchTask": "cmake-build",
+      "envFile": "${workspaceFolder}/.vscode/.env",
+      "stopAtEntry": false,
+      "MIMode": "gdb",
+      "miDebuggerPath": "/usr/bin/gdb"
+   }
   ],
   "inputs": [
     {
@@ -22,11 +37,11 @@
       "id": "configFile",
       "description": "Select YAML configuration file to pass as the program argument",
       "options": [
-        "configurations/bancada.yaml",
-        "configurations/bike.yaml",
-        "configurations/empty.yaml",
-        "configurations/invalid_test.yaml",
-        "configurations/friends.yaml"
+        "../configurations/bancada.yaml",
+        "../configurations/bike.yaml",
+        "../configurations/empty.yaml",
+        "../configurations/invalid_test.yaml",
+        "../configurations/friends.yaml"
       ]
     }
   ]

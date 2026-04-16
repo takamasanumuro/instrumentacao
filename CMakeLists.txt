@@ -86,6 +86,14 @@ if(BUILD_TESTS)
     
     # YAML validation test
     add_executable(yaml-validation-test test_yaml_validation.c ConfigYAML.c Channel.c)
+
+    # Channel override and CSV serialization test
+    add_executable(channel-override-test
+        test_channel_override.c
+        Channel.c
+        CsvLogger.c
+        LineProtocol.c
+    )
     
     # Integration test (uses most sources)
     add_executable(integration-test
@@ -105,7 +113,7 @@ if(BUILD_TESTS)
     )
     
     # Set common properties for all test executables
-    set(TEST_TARGETS yaml-test yaml-loader-test debug-yaml yaml-validation-test integration-test)
+    set(TEST_TARGETS yaml-test yaml-loader-test debug-yaml yaml-validation-test channel-override-test integration-test)
     foreach(target ${TEST_TARGETS})
         target_link_libraries(${target} PRIVATE ${YAML_LIBRARIES})
         target_include_directories(${target} PRIVATE ${YAML_INCLUDE_DIRS})
@@ -115,11 +123,3 @@ if(BUILD_TESTS)
     # Integration test needs additional libraries
     target_link_libraries(integration-test PRIVATE curl pthread m ZLIB::ZLIB)
 endif()
-
-#Copy the board configuration files to the build directory
-# This ensures that when you run the app from the build directory, it can find the config files.
-file(GLOB CONFIG_FILES "${CMAKE_CURRENT_SOURCE_DIR}/configurations*")
-foreach (CONFIG_FILE ${CONFIG_FILES})
-    get_filename_component(FILE_NAME ${CONFIG_FILE} NAME)
-    file(COPY ${CONFIG_FILE} DESTINATION ${CMAKE_BINARY_DIR})
-endforeach()
