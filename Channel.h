@@ -5,7 +5,7 @@
 #define MEASUREMENT_ID_SIZE 32
 #define GAIN_SETTING_SIZE 16
 #define UNIT_SIZE 16
-#define NUM_CHANNELS 4
+#define NUM_CHANNELS 16
 #define MAX_BOARDS 4
 #define MAX_TOTAL_CHANNELS (MAX_BOARDS * NUM_CHANNELS)
 
@@ -28,6 +28,8 @@ typedef struct {
     // Live Data
     int raw_adc_value;
     double filtered_adc_value;
+    bool has_calibrated_override;
+    double calibrated_override_value;
     bool is_active;
 } Channel;
 
@@ -38,6 +40,15 @@ void channel_init(Channel* channel);
 
 // Calculates the final calibrated value
 double channel_get_calibrated_value(const Channel* channel);
+
+// Overrides the calibrated value without changing the raw ADC reading
+void channel_set_calibrated_override(Channel* channel, double calibrated_value);
+
+// Clears any calibrated-value override and restores the normal sensor path
+void channel_clear_calibrated_override(Channel* channel);
+
+// Returns true when the channel is using a synthetic calibrated value
+bool channel_has_calibrated_override(const Channel* channel);
 
 // Updates the raw ADC value
 void channel_update_raw_value(Channel* channel, int new_raw_value);

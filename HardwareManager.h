@@ -17,6 +17,9 @@ typedef struct {
 // Opaque HardwareManager structure
 typedef struct HardwareManager HardwareManager;
 
+// Callback used to apply synthetic or derived values after hardware collection
+typedef bool (*HardwareManagerPostProcessFn)(HardwareManager* hw_manager, void* user_data);
+
 // Initialize hardware subsystems using parameters  
 HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addresses, int board_count);
                           
@@ -28,6 +31,11 @@ bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppCo
 
 // Set I2C retry parameters from configuration
 void hardware_manager_set_i2c_retry_params(HardwareManager* hw_manager, int max_retries, int base_delay_ms);
+
+// Register a post-processing callback executed after each measurement collection
+void hardware_manager_set_post_process_callback(HardwareManager* hw_manager,
+                                                HardwareManagerPostProcessFn callback,
+                                                void* user_data);
 
 // Cleanup hardware resources
 void hardware_manager_cleanup(HardwareManager* hw_manager);
@@ -43,6 +51,10 @@ int hardware_manager_get_channel_count(const HardwareManager* hw_manager);
 
 // Update channel calibration
 bool hardware_manager_update_channel_calibration(HardwareManager* hw_manager, int index, double slope, double offset);
+
+// Override or clear a channel's calibrated value
+bool hardware_manager_set_channel_calibrated_override(HardwareManager* hw_manager, int index, double calibrated_value);
+bool hardware_manager_clear_channel_calibrated_override(HardwareManager* hw_manager, int index);
 
 // === GPS Data Interface ===
 // Get current GPS data (on-demand)

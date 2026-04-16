@@ -32,6 +32,10 @@ struct HardwareManager {
     Channel channels[MAX_TOTAL_CHANNELS];
     int channel_count;
     bool channels_initialized;
+
+    // Optional post-processing hook for synthetic or derived channels
+    HardwareManagerPostProcessFn post_process_callback;
+    void* post_process_user_data;
 };
 
 HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addresses, int board_count) {                        
@@ -229,6 +233,11 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
         }
     }
 
+    if (hw_manager->post_process_callback) {
+        bool post_process_ok = hw_manager->post_process_callback(hw_manager, hw_manager->post_process_user_data);
+        all_success = all_success && post_process_ok;
+    }
+
     return all_success;
 }
 
@@ -266,6 +275,26 @@ bool hardware_manager_update_channel_calibration(HardwareManager* hw_manager,
     
     printf("Hardware: Updated calibration for channel %s: slope=%.6f, offset=%.6f\n",
            hw_manager->channels[index].id, slope, offset);
+    return true;
+}
+
+bool hardware_manager_set_channel_calibrated_override(HardwareManager* hw_manager, int index, double calibrated_value) {
+    if (!hw_manager || !hw_manager->channels_initialized || 
+        index < 0 || index >= hw_manager->channel_count) {
+        return false;
+    }
+
+    channel_set_calibrated_override(&hw_manager->channels[index], calibrated_value);
+    return true;
+}
+
+bool hardware_manager_clear_channel_calibrated_override(HardwareManager* hw_manager, int index) {
+    if (!hw_manager || !hw_manager->channels_initialized || 
+        index < 0 || index >= hw_manager->channel_count) {
+        return false;
+    }
+
+    channel_clear_calibrated_override(&hw_manager->channels[index]);
     return true;
 }
 
@@ -340,6 +369,15 @@ void hardware_manager_set_i2c_retry_params(HardwareManager* hw_manager, int max_
     
     printf("Hardware: I2C retry configured - max_retries=%d, base_delay=%dms\n", 
            hw_manager->i2c_max_retries, hw_manager->i2c_base_delay_ms);
+}
+
+void hardware_manager_set_post_process_callback(HardwareManager* hw_manager,
+                                                HardwareManagerPostProcessFn callback,
+                                                void* user_data) {
+    if (!hw_manager) return;
+
+    hw_manager->post_process_callback = callback;
+    hw_manager->post_process_user_data = user_data;
 }
 
 bool hardware_manager_is_gps_available(const HardwareManager* hw_manager) {

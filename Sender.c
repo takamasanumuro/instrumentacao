@@ -307,6 +307,20 @@ static bool send_http_post(const SenderContext* context, const char* url, struct
         fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(result));
     }
 
+    long http_code = 0;
+    curl_easy_getinfo(curl_handle, CURLINFO_RESPONSE_CODE, &http_code);
+
+    // Now you can check the HTTP code
+    if (http_code == 204) {
+        // Handle success (e.g., process response body)
+        //printf("HTTP status code: %ld (OK)\n", http_code);
+    } else {
+        // Handle specific HTTP errors
+        printf("[INFLUX]HTTP failure status code: %ld\n", http_code);
+        success = false;
+    }
+
+
     curl_easy_cleanup(curl_handle);
     free(chunk.memory);
 

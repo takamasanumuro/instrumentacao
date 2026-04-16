@@ -42,6 +42,14 @@ void csv_logger_init(CsvLogger* logger, const Channel* channels) {
     }
 }
 
+static void write_raw_csv_field(FILE* file_handle, const Channel* channel) {
+    if (channel_has_calibrated_override(channel)) {
+        return;
+    }
+
+    fprintf(file_handle, "%d", channel->raw_adc_value);
+}
+
 void csv_logger_init_from_yaml(CsvLogger* logger, const Channel* channels, const YAMLAppConfig* config) {
     logger->file_handle = NULL;
     logger->is_active = false;
@@ -103,7 +111,9 @@ void csv_logger_log(const CsvLogger* logger, const Channel* channels, const GPSD
     fprintf(logger->file_handle, "%s,%ld", time_buf, now);
 
     for (int i = 0; i < NUM_CHANNELS; i++) {
-        fprintf(logger->file_handle, ",%d,%.4f", channels[i].raw_adc_value, channel_get_calibrated_value(&channels[i]));
+        fprintf(logger->file_handle, ",");
+        write_raw_csv_field(logger->file_handle, &channels[i]);
+        fprintf(logger->file_handle, ",%.4f", channel_get_calibrated_value(&channels[i]));
     }
 
     // Handle potentially unavailable GPS data
