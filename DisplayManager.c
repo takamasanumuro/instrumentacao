@@ -111,8 +111,11 @@ struct DisplayManager {
     // Fallback mode
     bool use_fallback;
     
-    // stdout redirection for ncurses mode
+    // stdio redirection for ncurses mode
     FILE* original_stdout;
+    FILE* original_stderr;
+    FILE* redirected_stdout;
+    FILE* redirected_stderr;
 };
 
 // === Private Function Prototypes ===
@@ -157,6 +160,9 @@ DisplayManager* display_manager_init(void) {
     dm->message_count = 0;
     dm->message_start_idx = 0;
     dm->original_stdout = NULL;
+    dm->original_stderr = NULL;
+    dm->redirected_stdout = NULL;
+    dm->redirected_stderr = NULL;
     strcpy(dm->config_name, "unknown.yaml");
     
     // Try to initialize ncurses
@@ -325,9 +331,27 @@ static bool init_ncurses(DisplayManager* dm) {
     curs_set(0);        // Hide cursor
     nodelay(stdscr, TRUE); // Non-blocking input
     
-    // Save original stdout and redirect to suppress printf output during ncurses mode
+    // Redirect stdout/stderr so external printf/fprintf does not corrupt ncurses windows.
     dm->original_stdout = stdout;
-    stdout = fopen("/dev/null", "w");
+    dm->original_stderr = stderr;
+    dm->redirected_stdout = fopen("/dev/null", "w");
+    dm->redirected_stderr = fopen("/dev/null", "w");
+
+    if (!dm->redirected_stdout || !dm->redirected_stderr) {
+        if (dm->redirected_stdout) {
+            fclose(dm->redirected_stdout);
+            dm->redirected_stdout = NULL;
+        }
+        if (dm->redirected_stderr) {
+            fclose(dm->redirected_stderr);
+            dm->redirected_stderr = NULL;
+        }
+        endwin();
+        return false;
+    }
+
+    stdout = dm->redirected_stdout;
+    stderr = dm->redirected_stderr;
     
     // Initialize colors if supported
     if (has_colors()) {
@@ -354,11 +378,23 @@ static bool init_ncurses(DisplayManager* dm) {
 
 static void cleanup_ncurses(DisplayManager* dm) {
 #if NCURSES_AVAILABLE
-    // Restore original stdout
+    // Restore original stdio streams
     if (dm->original_stdout) {
-        fclose(stdout);
+        if (dm->redirected_stdout) {
+            fclose(dm->redirected_stdout);
+            dm->redirected_stdout = NULL;
+        }
         stdout = dm->original_stdout;
         dm->original_stdout = NULL;
+    }
+
+    if (dm->original_stderr) {
+        if (dm->redirected_stderr) {
+            fclose(dm->redirected_stderr);
+            dm->redirected_stderr = NULL;
+        }
+        stderr = dm->original_stderr;
+        dm->original_stderr = NULL;
     }
     
     endwin();
@@ -471,23 +507,23 @@ static void draw_measurements(DisplayManager* dm, const Channel* channels, int c
         }
     }
     
-    // Display GPS data if there's space
-    if (line < max_line + 1) {
-        line++; // Add spacing
-        wattron(dm->measurement_win, A_BOLD);
-        mvwprintw(dm->measurement_win, line++, 2, "=== GPS DATA ===");
-        wattroff(dm->measurement_win, A_BOLD);
+    // // Display GPS data if there's space
+    // if (line < max_line + 1) {
+    //     line++; // Add spacing
+    //     wattron(dm->measurement_win, A_BOLD);
+    //     mvwprintw(dm->measurement_win, line++, 2, "=== GPS DATA ===");
+    //     wattroff(dm->measurement_win, A_BOLD);
         
-        if (gps && !isnan(gps->latitude) && !isnan(gps->longitude)) {
-            mvwprintw(dm->measurement_win, line++, 2, 
-                     "Lat: %.6f, Lon: %.6f, Speed: %.1f kph",
-                     gps->latitude, gps->longitude, gps->speed);
-        } else {
-            wattron(dm->measurement_win, COLOR_PAIR(COLOR_PAIR_WARN));
-            mvwprintw(dm->measurement_win, line++, 2, "GPS: No valid data");
-            wattroff(dm->measurement_win, COLOR_PAIR(COLOR_PAIR_WARN));
-        }
-    }
+    //     if (gps && !isnan(gps->latitude) && !isnan(gps->longitude)) {
+    //         mvwprintw(dm->measurement_win, line++, 2, 
+    //                  "Lat: %.6f, Lon: %.6f, Speed: %.1f kph",
+    //                  gps->latitude, gps->longitude, gps->speed);
+    //     } else {
+    //         wattron(dm->measurement_win, COLOR_PAIR(COLOR_PAIR_WARN));
+    //         mvwprintw(dm->measurement_win, line++, 2, "GPS: No valid data");
+    //         wattroff(dm->measurement_win, COLOR_PAIR(COLOR_PAIR_WARN));
+    //     }
+    // }
     
     wrefresh(dm->measurement_win);
 #endif
@@ -623,12 +659,12 @@ static void fallback_print_measurements(const Channel* channels, int channel_cou
         }
     }
     
-    if (gps && !isnan(gps->latitude) && !isnan(gps->longitude)) {
-        printf("GPS: Lat=%.6f, Lon=%.6f, Speed=%.1f kph\n",
-               gps->latitude, gps->longitude, gps->speed);
-    } else {
-        printf("GPS: No valid data\n");
-    }
+    // if (gps && !isnan(gps->latitude) && !isnan(gps->longitude)) {
+    //     printf("GPS: Lat=%.6f, Lon=%.6f, Speed=%.1f kph\n",
+    //            gps->latitude, gps->longitude, gps->speed);
+    // } else {
+    //     printf("GPS: No valid data\n");
+    // }
     printf("-------------------------\n");
 }
 

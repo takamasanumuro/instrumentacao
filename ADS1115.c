@@ -118,7 +118,6 @@ int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t 
 
     int gain = gain_to_int(gain_str);
     if (gain == -1) {
-        fprintf(stderr, "ADS1115: Invalid gain setting '%s' for channel %d\n", gain_str, channel);
         return -1;
     }
 
@@ -138,7 +137,6 @@ int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t 
 
     if (write(i2c_handle, write_config_cmd, 3) != 3) {
         // Return -2: Error during I2C Master Write for Configuration
-        perror("ADS1115: Config write error");
         return -2;
     }
 
@@ -157,7 +155,6 @@ int ads1115_read(int i2c_handle, uint8_t channel, const char* gain_str, int16_t 
     while (1) {
         // Safety timeout to prevent infinite loop
         if ((time(NULL) - start_time) > 3) { // Timeout after 3 seconds
-            printf("ADS1115: Problem reading I2C. Check board address and connections!\n");
             // Timeout or problem reading I2C
             return -3; 
         }
@@ -209,21 +206,12 @@ int ads1115_read_with_retry(int i2c_handle, uint8_t channel, const char* gain_st
         int result = ads1115_read(i2c_handle, channel, gain_str, conversion_result);
         
         if (result == 0) {
-            // Success - log retry count if this wasn't the first attempt
-            if (attempt > 0) {
-                printf("ADS1115: Channel %d read succeeded on attempt %d/%d\n", 
-                       channel, attempt + 1, max_retries);
-            }
             return 0;
         }
         
         last_error = result;
         
-        // Log the retry attempt (except for the last one which will be logged as final failure)
         if (attempt < max_retries - 1) {
-            fprintf(stderr, "ADS1115: Channel %d read failed (attempt %d/%d, error %d), retrying...\n", 
-                   channel, attempt + 1, max_retries, result);
-            
             // Exponential backoff: 1ms, 2ms, 4ms, 8ms, etc. (capped at 100ms)
             int backoff_ms = 1 << attempt;
             if (backoff_ms > 100) {
@@ -233,10 +221,7 @@ int ads1115_read_with_retry(int i2c_handle, uint8_t channel, const char* gain_st
         }
     }
     
-    // All retries failed
-    fprintf(stderr, "ADS1115: Channel %d read failed after %d attempts (final error: %d)\n", 
-           channel, max_retries, last_error);
-    
+    // All retries failed; caller is responsible for higher-level logging.
     return last_error;
 }
 

@@ -42,6 +42,8 @@ struct ApplicationManager {
     DisplayManager* display_manager;
     IntervalTimer send_timer;
     time_t start_time;
+    time_t last_hw_error_log_time;
+    bool hw_error_active;
 };
 
 // --- Private Function Prototypes ---
@@ -200,7 +202,21 @@ void app_manager_run(ApplicationManager* app) {
 
     while (app->keep_running) {
         // Collect measurements via HardwareManager
-        hardware_manager_collect_measurements(app->hardware_manager);
+        bool measurements_ok = hardware_manager_collect_measurements(app->hardware_manager);
+        time_t now = time(NULL);
+
+        if (!measurements_ok) {
+            if (now - app->last_hw_error_log_time >= 2) {
+                display_manager_add_message(app->display_manager, MSG_WARN,
+                                           "Falha de leitura em uma ou mais entradas ADS1115 (tentando novamente)");
+                app->last_hw_error_log_time = now;
+            }
+            app->hw_error_active = true;
+        } else if (app->hw_error_active) {
+            display_manager_add_message(app->display_manager, MSG_INFO,
+                                       "Leituras ADS1115 normalizadas");
+            app->hw_error_active = false;
+        }
         
         if (interval_timer_should_trigger(&app->send_timer)) {
             // Get current data from hardware manager

@@ -25,7 +25,7 @@ hardware:
 
 system:
   main_loop_interval_ms: 100    # 10 Hz sampling rate
-  data_send_interval_ms: 500    # 2 Hz transmission rate
+  data_send_interval_ms: 200    # 5 Hz transmission rate
 
 channels:
   - board_address: 0x48
@@ -85,11 +85,11 @@ channels:
 
   - board_address: 0x49
     pin: "A1"
-    id: "Corrente_Saida_Boost"
+    id: "Corrente_Carregamento_H2"
     unit: "A"
     calibration:
-      slope: 0.002082894516
-      offset: -27.472542
+      slope: 0.002023360428
+      offset: -26.38273375
     adc:
       gain: "GAIN_4096MV"
       filter_alpha: 0.8
@@ -151,4 +151,4 @@ battery:
 network:
   socket_server_enabled: true
   socket_port: 2025
-  update_interval_ms: 500
+  update_interval_ms: 200

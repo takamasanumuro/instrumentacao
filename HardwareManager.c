@@ -211,8 +211,6 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
         // Find the I2C handle for this channel's board
         int board_handle = find_board_handle(hw_manager, channel->board_address);
         if (board_handle < 0) {
-            fprintf(stderr, "Hardware: Board 0x%02x not found for channel %s\n", 
-                   channel->board_address, channel->id);
             all_success = false;
             continue;
         }
@@ -227,8 +225,6 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
             // Apply filtering using channel's alpha value from YAML
             channel_apply_filter(channel, channel->filter_alpha);
         } else {
-            fprintf(stderr, "Hardware: Failed to read channel %s (board 0x%02x, pin %d) after retries\n", 
-                   channel->id, channel->board_address, channel->pin);
             all_success = false;
         }
     }
