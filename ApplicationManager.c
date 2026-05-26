@@ -247,7 +247,7 @@ void app_manager_run(ApplicationManager* app) {
             .send_frequency_hz = 1000.0 / app->yaml_config->system.data_send_interval_ms,
             .uptime_seconds = (int)(time(NULL) - app->start_time),
             .gps_connected = hardware_manager_is_gps_available(app->hardware_manager),
-            .influxdb_connected = true  // Assume connected for now
+            .influxdb_connected = sender_is_influx_enabled(app->sender_ctx)
         };
         display_manager_update_status(app->display_manager, &status);
         display_manager_refresh(app->display_manager);

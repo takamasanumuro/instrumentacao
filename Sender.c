@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h> 
 #include <curl/curl.h>
 
@@ -23,6 +24,9 @@ struct SenderContext {
     pthread_t sender_thread_id;
     pthread_t offline_processor_thread_id;
     volatile bool is_running;
+    bool threads_started;
+    bool influx_enabled;
+    bool disabled_mode_warned;
     InfluxDBContext influxdb_context;
 };
 
@@ -47,10 +51,18 @@ SenderContext* sender_create_from_env() {
     context->influxdb_context.org = getenv("INFLUXDB_ORG");
     context->influxdb_context.token = getenv("INFLUXDB_TOKEN");
 
-    if (!context->influxdb_context.url || !context->influxdb_context.bucket || !context->influxdb_context.org || !context->influxdb_context.token) {
-        fprintf(stderr, "Failed to get InfluxDB configuration from environment variables.\n");
-        free(context);
-        return NULL;
+    context->influx_enabled =
+        context->influxdb_context.url && strlen(context->influxdb_context.url) > 0 &&
+        context->influxdb_context.bucket && strlen(context->influxdb_context.bucket) > 0 &&
+        context->influxdb_context.org && strlen(context->influxdb_context.org) > 0 &&
+        context->influxdb_context.token && strlen(context->influxdb_context.token) > 0;
+
+    context->is_running = true;
+    context->threads_started = false;
+
+    if (!context->influx_enabled) {
+        fprintf(stderr, "InfluxDB configuration not fully defined in environment; network publishing disabled.\n");
+        return context;
     }
 
     context->queue = data_queue_create();
@@ -61,8 +73,6 @@ SenderContext* sender_create_from_env() {
     }
 
     offline_queue_init("logs/offline_log.txt");
-
-    context->is_running = true;
 
     if (pthread_create(&context->sender_thread_id, NULL, sender_thread_function, context) != 0) {
         perror("Failed to create sender thread");
@@ -82,6 +92,7 @@ SenderContext* sender_create_from_env() {
         return NULL;
     }
 
+    context->threads_started = true;
     return context;
 }
 
@@ -103,14 +114,18 @@ SenderContext* sender_create_from_yaml(const YAMLAppConfig* config) {
     context->influxdb_context.org = config->influxdb.org;
     context->influxdb_context.token = config->influxdb.token;
 
-    // Validate configuration
-    if (!context->influxdb_context.url || strlen(context->influxdb_context.url) == 0 ||
-        !context->influxdb_context.bucket || strlen(context->influxdb_context.bucket) == 0 ||
-        !context->influxdb_context.org || strlen(context->influxdb_context.org) == 0 ||
-        !context->influxdb_context.token || strlen(context->influxdb_context.token) == 0) {
-        fprintf(stderr, "Incomplete InfluxDB configuration in YAML file.\n");
-        free(context);
-        return NULL;
+    context->influx_enabled =
+        context->influxdb_context.url && strlen(context->influxdb_context.url) > 0 &&
+        context->influxdb_context.bucket && strlen(context->influxdb_context.bucket) > 0 &&
+        context->influxdb_context.org && strlen(context->influxdb_context.org) > 0 &&
+        context->influxdb_context.token && strlen(context->influxdb_context.token) > 0;
+
+    context->is_running = true;
+    context->threads_started = false;
+
+    if (!context->influx_enabled) {
+        fprintf(stderr, "Incomplete InfluxDB configuration in YAML file; network publishing disabled.\n");
+        return context;
     }
 
     context->queue = data_queue_create();
@@ -125,8 +140,6 @@ SenderContext* sender_create_from_yaml(const YAMLAppConfig* config) {
     snprintf(offline_queue_path, sizeof(offline_queue_path), "%s/offline_log.txt", 
              config->logging.csv_directory);
     offline_queue_init(offline_queue_path);
-
-    context->is_running = true;
 
     if (pthread_create(&context->sender_thread_id, NULL, sender_thread_function, context) != 0) {
         perror("Failed to create sender thread");
@@ -146,6 +159,8 @@ SenderContext* sender_create_from_yaml(const YAMLAppConfig* config) {
         return NULL;
     }
 
+    context->threads_started = true;
+
     printf("Sender module initialized with YAML configuration:\n");
     printf("  - InfluxDB URL: %s\n", context->influxdb_context.url);
     printf("  - Bucket: %s\n", context->influxdb_context.bucket);
@@ -156,9 +171,15 @@ SenderContext* sender_create_from_yaml(const YAMLAppConfig* config) {
 }
 
 void sender_destroy(SenderContext* context) {
-    if (!context || !context->is_running) {
+    if (!context) {
         return;
     }
+
+    if (!context->threads_started) {
+        free(context);
+        return;
+    }
+
     printf("Stopping sender module...\n");
     context->is_running = false;
 
@@ -176,12 +197,29 @@ void sender_destroy(SenderContext* context) {
 }
 
 void sender_submit(SenderContext* context, const char* line_protocol) {
-    if (!context || !context->is_running) {
+    if (!context) {
+        fprintf(stderr, "Cannot submit measurement, sender context is NULL.\n");
+        return;
+    }
+
+    if (!context->influx_enabled) {
+        if (!context->disabled_mode_warned) {
+            fprintf(stderr, "Sender is running without InfluxDB configuration; dropping network publications.\n");
+            context->disabled_mode_warned = true;
+        }
+        return;
+    }
+
+    if (!context->is_running || !context->queue) {
         fprintf(stderr, "Cannot submit measurement, sender is not running.\n");
         offline_queue_add(line_protocol); // Fallback to offline queue
         return;
     }
     data_queue_enqueue(context->queue, line_protocol);
+}
+
+bool sender_is_influx_enabled(const SenderContext* context) {
+    return context && context->influx_enabled;
 }
 
 // --- Private Function Implementations ---

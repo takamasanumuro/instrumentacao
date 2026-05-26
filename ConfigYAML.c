@@ -339,38 +339,6 @@ ConfigYAMLResult config_yaml_validate_comprehensive(const YAMLAppConfig* config,
         }
     }
 
-    // Validate environment variables are available
-    const char* required_env_vars[] = {
-        config->influxdb.url,
-        config->influxdb.bucket, 
-        config->influxdb.org,
-        config->influxdb.token
-    };
-
-    for (size_t i = 0; i < sizeof(required_env_vars)/sizeof(required_env_vars[0]); i++) {
-        const char* var = required_env_vars[i];
-        if (var && var[0] == '$' && var[1] == '{') {
-            // Extract variable name for validation
-            char* end = strchr(var + 2, '}');
-            if (end) {
-                char var_name[256];
-                size_t var_name_len = end - var - 2;
-                if (var_name_len < sizeof(var_name)) {
-                    strncpy(var_name, var + 2, var_name_len);
-                    var_name[var_name_len] = '\0';
-                    
-                    if (!getenv(var_name)) {
-                        if (error_message && error_size > 0) {
-                            snprintf(error_message, error_size,
-                                    "Required environment variable '%s' not set", var_name);
-                        }
-                        return CONFIG_YAML_ERROR_ENVIRONMENT_VARIABLE;
-                    }
-                }
-            }
-        }
-    }
-
     return CONFIG_YAML_SUCCESS;
 }
 
@@ -1328,9 +1296,9 @@ static bool expand_environment_variables(char* value, size_t max_size) {
         *end = '}';   // Restore
         
         if (!env_value) {
-            fprintf(stderr, "ConfigYAML: Environment variable '%.*s' not found\n", 
-                    (int)(end - value - 2), value + 2);
-            return false;
+            // Missing env var keeps Influx config optional: clear field.
+            value[0] = '\0';
+            return true;
         }
         
         // Replace with environment variable value

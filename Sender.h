@@ -49,4 +49,14 @@ void sender_destroy(SenderContext* context);
  */
 void sender_submit(SenderContext* context, const char* line_protocol);
 
+/**
+ * @brief Returns whether InfluxDB publishing is enabled for this sender.
+ *
+ * Publishing is enabled only when complete InfluxDB configuration is available.
+ *
+ * @param context The sender context.
+ * @return true if publishing is enabled, false otherwise.
+ */
+bool sender_is_influx_enabled(const SenderContext* context);
+
 #endif // SENDER_H
