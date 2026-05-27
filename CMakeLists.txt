@@ -94,6 +94,12 @@ if(BUILD_TESTS)
         CsvLogger.c
         LineProtocol.c
     )
+
+    # Derived readings test
+    add_executable(derived-readings-test
+        test_derived_readings.c
+        Channel.c
+    )
     
     # Integration test (uses most sources)
     add_executable(integration-test
@@ -113,7 +119,7 @@ if(BUILD_TESTS)
     )
     
     # Set common properties for all test executables
-    set(TEST_TARGETS yaml-test yaml-loader-test debug-yaml yaml-validation-test channel-override-test integration-test)
+    set(TEST_TARGETS yaml-test yaml-loader-test debug-yaml yaml-validation-test channel-override-test derived-readings-test integration-test)
     foreach(target ${TEST_TARGETS})
         target_link_libraries(${target} PRIVATE ${YAML_LIBRARIES})
         target_include_directories(${target} PRIVATE ${YAML_INCLUDE_DIRS})

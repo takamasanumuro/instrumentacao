@@ -17,6 +17,8 @@ typedef struct {
     char gain_setting[GAIN_SETTING_SIZE];
     int board_address;  // I2C address of the board (0x48-0x4B)
     int pin;           // ADC pin on that board (0-3)
+    bool is_derived;
+    char derived_source_id[MEASUREMENT_ID_SIZE];
 
     // Calibration
     double slope;

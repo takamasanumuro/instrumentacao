@@ -12,8 +12,10 @@ void channel_init(Channel* channel) {
     channel->has_calibrated_override = false;
     channel->calibrated_override_value = 0.0;
     channel->is_active = false;
+    channel->is_derived = false;
     channel->board_address = 0; // Default board address
     channel->pin = -1; // Initialize to invalid pin
+    channel->derived_source_id[0] = '\0';
     strcpy(channel->id, "NC"); // Default to "Not Connected"
 }
 

@@ -8,6 +8,19 @@
 #include "math.h"
 #include <stdlib.h>
 
+#define MAX_DERIVED_CHANNELS 4
+
+typedef struct {
+    char source_channel_id[MEASUREMENT_ID_SIZE];
+    char derived_channel_id[MEASUREMENT_ID_SIZE];
+    double source_min;
+    double source_max;
+    double derived_min;
+    double derived_max;
+    int source_index;
+    int derived_index;
+} DerivedChannelSpec;
+
 // The internal structure of HardwareManager
 struct HardwareManager {
     // Hardware interfaces
@@ -30,13 +43,138 @@ struct HardwareManager {
     
     // Channel management (up to 16 channels across 4 boards)
     Channel channels[MAX_TOTAL_CHANNELS];
+    int physical_channel_count;
     int channel_count;
     bool channels_initialized;
+
+    DerivedChannelSpec derived_channels[MAX_DERIVED_CHANNELS];
+    int derived_channel_count;
 
     // Optional post-processing hook for synthetic or derived channels
     HardwareManagerPostProcessFn post_process_callback;
     void* post_process_user_data;
 };
+
+static int find_channel_index_by_id(const HardwareManager* hw_manager, const char* channel_id) {
+    if (!hw_manager || !channel_id) {
+        return -1;
+    }
+
+    for (int i = 0; i < hw_manager->physical_channel_count; i++) {
+        const Channel* channel = &hw_manager->channels[i];
+        if (channel->is_active && strcmp(channel->id, channel_id) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static double clamp_double(double value, double min_value, double max_value) {
+    if (value < min_value) return min_value;
+    if (value > max_value) return max_value;
+    return value;
+}
+
+static bool add_linear_derived_channel(HardwareManager* hw_manager,
+                                       const char* source_channel_id,
+                                       const char* derived_channel_id,
+                                       const char* unit,
+                                       double source_min,
+                                       double source_max,
+                                       double derived_min,
+                                       double derived_max) {
+    if (!hw_manager || !source_channel_id || !derived_channel_id || !unit) {
+        return false;
+    }
+
+    if (hw_manager->derived_channel_count >= MAX_DERIVED_CHANNELS) {
+        fprintf(stderr, "Hardware: Maximum derived channel count reached\n");
+        return false;
+    }
+
+    int source_index = find_channel_index_by_id(hw_manager, source_channel_id);
+    if (source_index < 0) {
+        return false;
+    }
+
+    if (hw_manager->channel_count >= MAX_TOTAL_CHANNELS) {
+        fprintf(stderr, "Hardware: No space left for derived channel '%s'\n", derived_channel_id);
+        return false;
+    }
+
+    int derived_index = hw_manager->channel_count;
+    Channel* derived = &hw_manager->channels[derived_index];
+    channel_init(derived);
+
+    strncpy(derived->id, derived_channel_id, MEASUREMENT_ID_SIZE - 1);
+    derived->id[MEASUREMENT_ID_SIZE - 1] = '\0';
+    strncpy(derived->unit, unit, UNIT_SIZE - 1);
+    derived->unit[UNIT_SIZE - 1] = '\0';
+    strncpy(derived->gain_setting, "DERIVED", GAIN_SETTING_SIZE - 1);
+    derived->gain_setting[GAIN_SETTING_SIZE - 1] = '\0';
+    derived->board_address = -1;
+    derived->pin = -1;
+    derived->is_active = true;
+    derived->is_derived = true;
+    strncpy(derived->derived_source_id, source_channel_id, MEASUREMENT_ID_SIZE - 1);
+    derived->derived_source_id[MEASUREMENT_ID_SIZE - 1] = '\0';
+    derived->slope = 1.0;
+    derived->offset = 0.0;
+    derived->filter_alpha = 0.0;
+    derived->raw_adc_value = 0;
+    derived->filtered_adc_value = 0.0;
+    channel_clear_calibrated_override(derived);
+
+    DerivedChannelSpec* spec = &hw_manager->derived_channels[hw_manager->derived_channel_count];
+    strncpy(spec->source_channel_id, source_channel_id, MEASUREMENT_ID_SIZE - 1);
+    spec->source_channel_id[MEASUREMENT_ID_SIZE - 1] = '\0';
+    strncpy(spec->derived_channel_id, derived_channel_id, MEASUREMENT_ID_SIZE - 1);
+    spec->derived_channel_id[MEASUREMENT_ID_SIZE - 1] = '\0';
+    spec->source_min = source_min;
+    spec->source_max = source_max;
+    spec->derived_min = derived_min;
+    spec->derived_max = derived_max;
+    spec->source_index = source_index;
+    spec->derived_index = derived_index;
+
+    hw_manager->derived_channel_count++;
+    hw_manager->channel_count++;
+
+    return true;
+}
+
+static void update_derived_channels(HardwareManager* hw_manager) {
+    if (!hw_manager) {
+        return;
+    }
+
+    for (int i = 0; i < hw_manager->derived_channel_count; i++) {
+        DerivedChannelSpec* spec = &hw_manager->derived_channels[i];
+        if (spec->source_index < 0 || spec->source_index >= hw_manager->physical_channel_count) {
+            continue;
+        }
+        if (spec->derived_index < 0 || spec->derived_index >= hw_manager->channel_count) {
+            continue;
+        }
+
+        const Channel* source = &hw_manager->channels[spec->source_index];
+        Channel* derived = &hw_manager->channels[spec->derived_index];
+
+        double source_value = channel_get_calibrated_value(source);
+        double source_span = spec->source_max - spec->source_min;
+        double derived_span = spec->derived_max - spec->derived_min;
+
+        double derived_value = spec->derived_min;
+        if (source_span != 0.0) {
+            double ratio = (source_value - spec->source_min) / source_span;
+            derived_value = spec->derived_min + (ratio * derived_span);
+        }
+
+        derived_value = clamp_double(derived_value, spec->derived_min, spec->derived_max);
+        channel_set_calibrated_override(derived, derived_value);
+    }
+}
 
 HardwareManager* hardware_manager_init(const char* i2c_bus_path, int* board_addresses, int board_count) {                        
     if (!i2c_bus_path || !board_addresses || board_count <= 0 || board_count > MAX_BOARDS) {
@@ -179,8 +317,24 @@ bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppCo
         return false;
     }
 
-    hw_manager->channel_count = config->channel_count < MAX_TOTAL_CHANNELS ? 
-                               config->channel_count : MAX_TOTAL_CHANNELS;
+    hw_manager->physical_channel_count = config->channel_count < MAX_TOTAL_CHANNELS ? 
+                                        (int)config->channel_count : MAX_TOTAL_CHANNELS;
+    hw_manager->channel_count = hw_manager->physical_channel_count;
+    hw_manager->derived_channel_count = 0;
+
+    if (!add_linear_derived_channel(hw_manager,
+                                    "Pressao_Cilindro_Hidrogenio",
+                                    "Nivel_Cilindro_Hidrogenio",
+                                    "%",
+                                    0.0,
+                                    150.0,
+                                    0.0,
+                                    100.0)) {
+        printf("Hardware: No derived hydrogen cylinder level channel registered\n");
+    } else {
+        printf("Hardware: Derived channel registered from Pressao_Cilindro_Hidrogenio\n");
+    }
+
     hw_manager->channels_initialized = true;
 
     printf("Hardware: Initialized %d channels from YAML configuration\n", hw_manager->channel_count);
@@ -203,7 +357,7 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
 
     bool all_success = true;
 
-    for (int i = 0; i < hw_manager->channel_count; i++) {
+    for (int i = 0; i < hw_manager->physical_channel_count; i++) {
         Channel* channel = &hw_manager->channels[i];
         
         if (!channel->is_active) continue;
@@ -228,6 +382,8 @@ bool hardware_manager_collect_measurements(HardwareManager* hw_manager) {
             all_success = false;
         }
     }
+
+    update_derived_channels(hw_manager);
 
     if (hw_manager->post_process_callback) {
         bool post_process_ok = hw_manager->post_process_callback(hw_manager, hw_manager->post_process_user_data);

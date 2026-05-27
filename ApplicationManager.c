@@ -191,7 +191,7 @@ AppManagerError app_manager_init(ApplicationManager* app) {
     battery_monitor_init_from_yaml(&app->battery_state, hardware_manager_get_channels(app->hardware_manager), app->yaml_config);
 
     display_manager_add_message(app->display_manager, MSG_INFO, "Application Manager initialized successfully with config: %s", config_filename);
-    display_manager_add_message(app->display_manager, MSG_INFO, "Channels configured: %zu", app->yaml_config->channel_count);
+    display_manager_add_message(app->display_manager, MSG_INFO, "Live channels available: %d", hardware_manager_get_channel_count(app->hardware_manager));
     display_manager_add_message(app->display_manager, MSG_INFO, "Main loop interval: %d ms", app->yaml_config->system.main_loop_interval_ms);
     display_manager_add_message(app->display_manager, MSG_INFO, "Data send interval: %d ms", app->yaml_config->system.data_send_interval_ms);
     return APP_SUCCESS;

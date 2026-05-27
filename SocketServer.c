@@ -290,13 +290,26 @@ static int create_json_response(char* buffer, size_t buffer_size,
         safe_json_escape(channels[i].id, escaped_id, sizeof(escaped_id));
         safe_json_escape(channels[i].unit, escaped_unit, sizeof(escaped_unit));
 
-        written = snprintf(buffer + offset, buffer_size - offset,
-            "{\"id\":\"%s\",\"pin\":%d,\"adc\":%d,\"value\":%.6f,\"unit\":\"%s\"}",
-            escaped_id,
-            channels[i].pin,
-            channels[i].raw_adc_value,
-            channel_get_calibrated_value(&channels[i]),
-            escaped_unit);
+        if (channels[i].is_derived) {
+            char escaped_source[64];
+            safe_json_escape(channels[i].derived_source_id, escaped_source, sizeof(escaped_source));
+            written = snprintf(buffer + offset, buffer_size - offset,
+                "{\"id\":\"%s\",\"derived\":true,\"source_id\":\"%s\",\"pin\":%d,\"adc\":%d,\"value\":%.6f,\"unit\":\"%s\"}",
+                escaped_id,
+                escaped_source,
+                channels[i].pin,
+                channels[i].raw_adc_value,
+                channel_get_calibrated_value(&channels[i]),
+                escaped_unit);
+        } else {
+            written = snprintf(buffer + offset, buffer_size - offset,
+                "{\"id\":\"%s\",\"derived\":false,\"pin\":%d,\"adc\":%d,\"value\":%.6f,\"unit\":\"%s\"}",
+                escaped_id,
+                channels[i].pin,
+                channels[i].raw_adc_value,
+                channel_get_calibrated_value(&channels[i]),
+                escaped_unit);
+        }
 
         if (written < 0 || (size_t)written >= buffer_size - offset) return -1;
         offset += written;
