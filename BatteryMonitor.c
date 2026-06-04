@@ -144,6 +144,8 @@ void battery_monitor_update(BatteryState* state, const Channel* channels) {
                        + (current_time.tv_nsec - state->last_update_time.tv_nsec) / 1e9;
 
     double current_A = channel_get_calibrated_value(&channels[state->current_measurement_index]);
+    //Only calculate if abs value is greater than some threshold
+    current_A = (fabs(current_A) > 0.050) ? current_A : 0.0;
     double charge_moved_Ah = (current_A * time_diff_s) / 3600.0;
     double soc_change_percent = (charge_moved_Ah / state->capacity_Ah) * 100.0;
 

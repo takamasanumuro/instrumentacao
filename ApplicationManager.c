@@ -227,6 +227,20 @@ void app_manager_run(ApplicationManager* app) {
             data_publisher_publish(app->data_publisher, channels, &gps_data);
             interval_timer_mark_triggered(&app->send_timer);
         }
+
+        /* Update BatteryMonitor every loop so SoC is current. The battery monitor
+           reads the configured current channel via the channels array and updates
+           internal SoC state. After updating, publish the SoC value into the
+           derived channel `SoC_percent` so it's visible to CSV/JSON/TUI. */
+        const Channel* post_measure_channels = hardware_manager_get_channels(app->hardware_manager);
+        battery_monitor_update(&app->battery_state, post_measure_channels);
+        int total_channels = hardware_manager_get_channel_count(app->hardware_manager);
+        for (int i = 0; i < total_channels; i++) {
+            if (strcmp(post_measure_channels[i].id, "SoC_percent") == 0) {
+                hardware_manager_set_channel_calibrated_override(app->hardware_manager, i, app->battery_state.state_of_charge_percent);
+                break;
+            }
+        }
         
         // Log and display using hardware manager data
         const Channel* channels = hardware_manager_get_channels(app->hardware_manager);

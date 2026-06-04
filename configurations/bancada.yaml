@@ -34,7 +34,7 @@ channels:
     unit: "A"
     calibration:
       slope: 0.002059726118
-      offset: -27.06994605
+      offset: -27.36994605
     adc:
       gain: "GAIN_4096MV"
       filter_alpha: 0.8
@@ -143,12 +143,12 @@ logging:
 
 # Battery monitoring with coulomb counting
 battery:
-  coulomb_counting_enabled: false
-  capacity_ah: 100.0
-  current_channel_id: "corrente_bateria_principal"
+  coulomb_counting_enabled: true
+  capacity_ah: 8
+  current_channel_id: "Corrente_Bateria_Principal"
 
 # Network and connectivity
 network:
   socket_server_enabled: true
-  socket_port: 2025
+  socket_port: 2026
   update_interval_ms: 200

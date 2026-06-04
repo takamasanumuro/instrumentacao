@@ -335,6 +335,36 @@ bool hardware_manager_init_channels(HardwareManager* hw_manager, const YAMLAppCo
         printf("Hardware: Derived channel registered from Pressao_Cilindro_Hidrogenio\n");
     }
 
+    /* Register a placeholder derived channel for Battery State of Charge (SoC).
+       The BatteryMonitor will compute SoC and the application will write the
+       percent value into this derived channel so it is visible app-wide. */
+    if (hw_manager->channel_count < MAX_TOTAL_CHANNELS) {
+        Channel* soc = &hw_manager->channels[hw_manager->channel_count];
+        channel_init(soc);
+        strncpy(soc->id, "SoC_percent", MEASUREMENT_ID_SIZE - 1);
+        soc->id[MEASUREMENT_ID_SIZE - 1] = '\0';
+        strncpy(soc->unit, "%", UNIT_SIZE - 1);
+        soc->unit[UNIT_SIZE - 1] = '\0';
+        strncpy(soc->gain_setting, "DERIVED", GAIN_SETTING_SIZE - 1);
+        soc->gain_setting[GAIN_SETTING_SIZE - 1] = '\0';
+        soc->board_address = -1;
+        soc->pin = -1;
+        soc->is_active = true;
+        soc->is_derived = true;
+        /* If YAML specifies a current channel id, store it as the source id */
+        if (config && strlen(config->battery.current_channel_id) > 0) {
+            strncpy(soc->derived_source_id, config->battery.current_channel_id, MEASUREMENT_ID_SIZE - 1);
+            soc->derived_source_id[MEASUREMENT_ID_SIZE - 1] = '\0';
+        } else {
+            soc->derived_source_id[0] = '\0';
+        }
+        channel_clear_calibrated_override(soc);
+        hw_manager->channel_count++;
+        printf("Hardware: Derived channel registered for Battery SoC (SoC_percent)\n");
+    } else {
+        printf("Hardware: No space to register Battery SoC derived channel\n");
+    }
+
     hw_manager->channels_initialized = true;
 
     printf("Hardware: Initialized %d channels from YAML configuration\n", hw_manager->channel_count);

@@ -489,19 +489,18 @@ static void draw_measurements(DisplayManager* dm, const Channel* channels, int c
             char line_buffer[256];
                 if (channels[i].is_derived) {
                 snprintf(line_buffer, sizeof(line_buffer),
-                    "[Derived from %s] (%.50s): %.2f %s",
-                    channels[i].derived_source_id,
+                    "[Derivado] (%.50s): %.2f %s",
                     display_id,
                     calibrated_value,
                     channels[i].unit);
                 } else {
-                snprintf(line_buffer, sizeof(line_buffer),
-                    "[Board 0x%02X] Ch%d (%.50s): %.2f %s",
-                    channels[i].board_address,
-                    channels[i].pin,
-                    display_id,
-                    calibrated_value,
-                    channels[i].unit);
+            snprintf(line_buffer, sizeof(line_buffer),
+                "[Board 0x%02X] Ch%d (%.50s): %.2f %s",
+                channels[i].board_address,
+                channels[i].pin,
+                display_id,
+                calibrated_value,
+                channels[i].unit);
                 }
             
             // Truncate if too long for window
@@ -660,20 +659,19 @@ static void fallback_print_measurements(const Channel* channels, int channel_cou
     for (int i = 0; i < channel_count && i < MAX_TOTAL_CHANNELS; i++) {
         if (channels[i].is_active) {
             if (channels[i].is_derived) {
-                printf("[Derived from %-24s] %-30s: %8.2f %s\n",
-                       channels[i].derived_source_id,
+                printf("[Derivado] %-30s: %8.2f %s\n",
                        channels[i].id,
                        channel_get_calibrated_value(&channels[i]),
                        channels[i].unit);
             } else {
-                printf("Board 0x%02X[Ch %d] %-30s: %8.2f %s\n",
+            printf("Board 0x%02X[Ch %d] %-30s: %8.2f %s\n",
                        channels[i].board_address,
                        channels[i].pin,
                        channels[i].id,
                        channel_get_calibrated_value(&channels[i]),
                        channels[i].unit);
             }
-        }
+            }
     }
     
     // if (gps && !isnan(gps->latitude) && !isnan(gps->longitude)) {
